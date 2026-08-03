@@ -1,5 +1,5 @@
-const BASE_URL = "https://qpxgoltvnwaenqwwhilb.supabase.co/rest/v1/";
-const SUPABASE_KEY = "sb_publishable_sk3GOk3RA1-JIq1BZ762kA_sGRoKb4K";
+const BASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://qpxgoltvnwaenqwwhilb.supabase.co/rest/v1/";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_sk3GOk3RA1-JIq1BZ762kA_sGRoKb4K";
 
 const headers = {
   "apikey": SUPABASE_KEY,
