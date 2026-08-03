@@ -1,0 +1,435 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, MapPin, Stethoscope } from 'lucide-react';
+import { api } from '../services/supabase';
+
+export default function AgendarCitaModal({ user, sucursales, categorias, reglas, userSesiones, onDismiss, onSuccess }) {
+  const [tipoPaciente, setTipoPaciente] = useState(null); // 'Nuevo' | 'Ortodoncia'
+  const [selectedSucursal, setSelectedSucursal] = useState(null);
+  const [selectedCategoria, setSelectedCategoria] = useState(null);
+  
+  // Date & Time selection
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null); // 'YYYY-MM-DD'
+  const [selectedTime, setSelectedTime] = useState(null); // 'HH:mm:ss'
+  const [horasOcupadas, setHorasOcupadas] = useState([]);
+
+  const [isLoadingHoras, setIsLoadingHoras] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // Duration check
+  const isOrtodoncia = tipoPaciente === 'Ortodoncia' || selectedCategoria?.nombre?.toLowerCase().includes('ortodoncia');
+  const duracionMinutos = useMemo(() => {
+    if (isOrtodoncia) return 15;
+    return selectedCategoria?.duracion || 30;
+  }, [isOrtodoncia, selectedCategoria]);
+
+  // Load occupied slots whenever selected date or sucursal changes
+  useEffect(() => {
+    if (selectedDate && selectedSucursal) {
+      setIsLoadingHoras(true);
+      api.getSesionesPorFechaYSucursal(selectedDate, selectedSucursal.id_sucursal)
+        .then(sesiones => {
+          setHorasOcupadas(sesiones.map(s => ({
+            inicio: s.hora_inicio,
+            fin: s.hora_fin
+          })));
+        })
+        .catch(err => console.error(err))
+        .finally(() => setIsLoadingHoras(false));
+    } else {
+      setHorasOcupadas([]);
+    }
+  }, [selectedDate, selectedSucursal]);
+
+  // Rule Validation for Day cell
+  const isDayEnabled = (dateObj) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const checkDate = new Date(dateObj);
+    checkDate.setHours(0, 0, 0, 0);
+
+    const dayOfWeek = checkDate.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
+
+    // Rule 1: No Friday (5), Saturday (6), or Sunday (0)
+    if (dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6) return false;
+
+    // Rule 2: Anticipation Days Rule
+    const sucursalId = selectedSucursal?.id_sucursal;
+    const regla = reglas.find(r => r.id_sucursal === sucursalId);
+
+    if (regla) {
+      const minDate = new Date(today);
+      minDate.setDate(minDate.getDate() + (regla.dias_min || 1));
+      const maxDate = new Date(today);
+      maxDate.setDate(maxDate.getDate() + (regla.dias_max || 30));
+
+      if (checkDate < minDate || checkDate > maxDate) return false;
+    } else {
+      if (checkDate < today) return false;
+    }
+
+    // Rule 3: Ortodoncia Specific Branch Days
+    if (isOrtodoncia && selectedSucursal) {
+      const dir = (selectedSucursal.direccion || '').toLowerCase();
+      const isElAlto = sucursalId === 4 || dir.includes('alto');
+      const isLaPaz = dir.includes('paz');
+
+      if (isElAlto) {
+        // Tuesday (2) or Thursday (4) ONLY
+        if (dayOfWeek !== 2 && dayOfWeek !== 4) return false;
+      } else if (isLaPaz) {
+        // Monday (1) or Wednesday (3) ONLY
+        if (dayOfWeek !== 1 && dayOfWeek !== 3) return false;
+      }
+    }
+
+    return true;
+  };
+
+  // GenerateAvailableTimeSlots
+  const availableSlots = useMemo(() => {
+    if (!selectedDate) return [];
+    
+    const slots = [];
+    const [year, month, day] = selectedDate.split('-').map(Number);
+    const dateOfSlots = new Date(year, month - 1, day);
+    const dayOfWeek = dateOfSlots.getDay();
+
+    const startHour = 9;
+    const endHour = (dayOfWeek >= 1 && dayOfWeek <= 5) ? 17 : 11;
+
+    for (let h = startHour; h <= endHour; h++) {
+      if (h === 12 || h === 13) continue; // Lunch break
+      [0, 15, 30, 45].forEach(m => {
+        const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+        
+        // Calculate slot end time
+        const slotStartMinutes = h * 60 + m;
+        const slotEndMinutes = slotStartMinutes + duracionMinutos;
+        const endH = Math.floor(slotEndMinutes / 60);
+        const endM = slotEndMinutes % 60;
+        const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
+
+        // Check if slot overlaps with any occupied range
+        const isOccupied = horasOcupadas.some(occ => {
+          const occStartParts = (occ.inicio || '').split(':').map(Number);
+          const occEndParts = (occ.fin || '').split(':').map(Number);
+          
+          const occStartMins = occStartParts[0] * 60 + occStartParts[1];
+          const occEndMins = occEndParts[0] * 60 + occEndParts[1];
+
+          return slotStartMinutes < occEndMins && slotEndMinutes > occStartMins;
+        });
+
+        // Filter out past times if date is today
+        const now = new Date();
+        const isToday = dateOfSlots.toDateString() === now.toDateString();
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+        const isPast = isToday && slotStartMinutes <= currentMins;
+
+        if (!isOccupied && !isPast) {
+          slots.push({
+            time: timeStr,
+            display: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+            endTime: endTimeStr
+          });
+        }
+      });
+    }
+
+    return slots;
+  }, [selectedDate, duracionMinutos, horasOcupadas]);
+
+  // Calendar Helper Functions
+  const getDaysInMonth = (date) => {
+    const y = date.getFullYear();
+    const m = date.getMonth();
+    const firstDay = new Date(y, m, 1).getDay();
+    const daysCount = new Date(y, m + 1, 0).getDate();
+    return { firstDay, daysCount, y, m };
+  };
+
+  const handleDateClick = (d) => {
+    const y = currentMonth.getFullYear();
+    const m = String(currentMonth.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(d).padStart(2, '0');
+    const formatted = `${y}-${m}-${dayStr}`;
+
+    const dateObj = new Date(y, currentMonth.getMonth(), d);
+    if (isDayEnabled(dateObj)) {
+      setSelectedDate(formatted);
+      setSelectedTime(null);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedDate || !selectedTime || !selectedSucursal) return;
+
+    // Check active appointment restriction
+    const todayStr = new Date().toISOString().split('T')[0];
+    const hasActiveAppointment = userSesiones.some(s => {
+      const isFuture = s.fecha >= todayStr;
+      const isPendingOrConfirmed = s.estado === 'Pendiente' || s.estado === 'Confirmada';
+      return isFuture && isPendingOrConfirmed;
+    });
+
+    if (hasActiveAppointment) {
+      setErrorMessage('No puedes agendar una nueva cita si ya tienes una cita pendiente o confirmada.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      const slotObj = availableSlots.find(s => s.time === selectedTime.time);
+      const categoryId = tipoPaciente === 'Ortodoncia' ? 3 : (selectedCategoria?.id_categoria || 2);
+
+      await api.agendarCita({
+        id_cliente: user.userId,
+        id_sucursal: selectedSucursal.id_sucursal,
+        id_categoria: categoryId,
+        fecha: selectedDate,
+        hora_inicio: selectedTime.time,
+        hora_fin: selectedTime.endTime,
+        notas: `Cita ${tipoPaciente} agendada desde la Web`,
+        estado: 'Pendiente'
+      });
+
+      onSuccess();
+    } catch (err) {
+      setErrorMessage('Error al agendar la cita: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Render Step 1: Patient Type Selector
+  if (!tipoPaciente) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal-content" style={{ textAlign: 'center' }}>
+          <button onClick={onDismiss} style={{ position: 'absolute', top: '1.2rem', right: '1.2rem', background: 'none', border: 'none', color: 'var(--celadon)', cursor: 'pointer' }}>
+            <X size={22} />
+          </button>
+
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--frosted-mint)', marginBottom: '0.4rem' }}>
+            Tipo de Paciente
+          </h2>
+          <p style={{ fontSize: '0.88rem', color: 'var(--celadon)', marginBottom: '1.75rem' }}>
+            Por favor selecciona una opción para comenzar
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+            <button
+              onClick={() => setTipoPaciente('Nuevo')}
+              className="btn-primary"
+              style={{ width: '100%', height: '52px', fontSize: '1rem' }}
+            >
+              Paciente Nuevo (Consulta General / Estética / Tratamientos)
+            </button>
+
+            <button
+              onClick={() => setTipoPaciente('Ortodoncia')}
+              className="btn-secondary"
+              style={{ width: '100%', height: '52px', fontSize: '1rem', border: '1px solid var(--mint-leaf)' }}
+            >
+              Paciente de Ortodoncia (Control / Diagnóstico)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { firstDay, daysCount } = getDaysInMonth(currentMonth);
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content" style={{ maxWidth: '580px' }}>
+        <button onClick={onDismiss} style={{ position: 'absolute', top: '1.2rem', right: '1.2rem', background: 'none', border: 'none', color: 'var(--celadon)', cursor: 'pointer' }}>
+          <X size={22} />
+        </button>
+
+        <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--frosted-mint)', marginBottom: '0.2rem' }}>
+          {tipoPaciente === 'Nuevo' ? 'Agendar Cita - Paciente Nuevo' : 'Agendar Cita - Paciente Ortodoncia'}
+        </h2>
+        <p style={{ fontSize: '0.85rem', color: 'var(--celadon)', marginBottom: '1.25rem' }}>
+          Completa la sucursal, tratamiento y fecha deseada
+        </p>
+
+        {errorMessage && (
+          <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#ff9999', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+            {errorMessage}
+          </div>
+        )}
+
+        {/* Form Fields */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          
+          {/* Sucursal Selection */}
+          <div>
+            <label className="input-label" style={{ marginBottom: '0.4rem' }}>
+              <span><MapPin size={15} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Sucursal *</span>
+            </label>
+            <select
+              className="input-field"
+              style={{ paddingLeft: '1rem' }}
+              value={selectedSucursal?.id_sucursal || ''}
+              onChange={(e) => {
+                const found = sucursales.find(s => s.id_sucursal === Number(e.target.value));
+                setSelectedSucursal(found || null);
+                setSelectedDate(null);
+                setSelectedTime(null);
+              }}
+            >
+              <option value="">-- Seleccionar Sucursal --</option>
+              {sucursales.map(s => (
+                <option key={s.id_sucursal} value={s.id_sucursal}>
+                  {s.direccion} ({s.hora_apertura?.substring(0,5)} - {s.hora_cierre?.substring(0,5)})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Treatment Category Selection (for Nuevo Paciente) */}
+          {tipoPaciente === 'Nuevo' && (
+            <div>
+              <label className="input-label" style={{ marginBottom: '0.4rem' }}>
+                <span><Stethoscope size={15} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Tratamiento Deseado *</span>
+              </label>
+              <select
+                className="input-field"
+                style={{ paddingLeft: '1rem' }}
+                value={selectedCategoria?.id_categoria || ''}
+                onChange={(e) => {
+                  const found = categorias.find(c => c.id_categoria === Number(e.target.value));
+                  setSelectedCategoria(found || null);
+                  setSelectedDate(null);
+                  setSelectedTime(null);
+                }}
+              >
+                <option value="">-- Seleccionar Tratamiento --</option>
+                {categorias
+                  .filter(c => !c.nombre.toLowerCase().includes('cirug'))
+                  .map(c => (
+                    <option key={c.id_categoria} value={c.id_categoria}>
+                      {c.nombre} ({c.duracion || 30} min)
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+
+          {/* Calendar Date Picker */}
+          {selectedSucursal && (tipoPaciente === 'Ortodoncia' || selectedCategoria) && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                <span className="input-label"><CalendarIcon size={15} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Seleccionar Fecha</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
+                    style={{ background: 'var(--dark-emerald)', border: 'none', color: 'var(--frosted-mint)', padding: '0.2rem 0.5rem', borderRadius: '6px', cursor: 'pointer' }}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--frosted-mint)', textTransform: 'capitalize' }}>
+                    {currentMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
+                    style={{ background: 'var(--dark-emerald)', border: 'none', color: 'var(--frosted-mint)', padding: '0.2rem 0.5rem', borderRadius: '6px', cursor: 'pointer' }}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Month Calendar Grid */}
+              <div className="glass-card" style={{ padding: '0.8rem' }}>
+                <div className="calendar-grid">
+                  {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'].map((day, i) => (
+                    <div key={i} className="calendar-day-header">{day}</div>
+                  ))}
+
+                  {Array.from({ length: firstDay }).map((_, i) => (
+                    <div key={`empty-${i}`} />
+                  ))}
+
+                  {Array.from({ length: daysCount }).map((_, i) => {
+                    const dayNum = i + 1;
+                    const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNum);
+                    const enabled = isDayEnabled(dateObj);
+                    const y = currentMonth.getFullYear();
+                    const m = String(currentMonth.getMonth() + 1).padStart(2, '0');
+                    const dStr = String(dayNum).padStart(2, '0');
+                    const fullDateStr = `${y}-${m}-${dStr}`;
+                    const isSelected = selectedDate === fullDateStr;
+
+                    return (
+                      <div
+                        key={dayNum}
+                        className={`calendar-day-cell ${enabled ? '' : 'disabled'} ${isSelected ? 'selected' : ''}`}
+                        onClick={() => enabled && handleDateClick(dayNum)}
+                      >
+                        {dayNum}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Time Slots Selector */}
+          {selectedDate && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <div className="input-label" style={{ marginBottom: '0.5rem' }}>
+                <span><Clock size={15} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Horarios Disponibles ({duracionMinutos} min)</span>
+              </div>
+
+              {isLoadingHoras ? (
+                <div style={{ textAlign: 'center', color: 'var(--celadon)', padding: '1rem', fontSize: '0.85rem' }}>Cargando horarios...</div>
+              ) : availableSlots.length === 0 ? (
+                <div style={{ color: 'var(--danger)', fontSize: '0.85rem', padding: '0.5rem 0' }}>
+                  No hay horarios libres disponibles para esta fecha.
+                </div>
+              ) : (
+                <div className="slots-grid">
+                  {availableSlots.map(slot => (
+                    <div
+                      key={slot.time}
+                      className={`slot-item ${selectedTime?.time === slot.time ? 'selected' : ''}`}
+                      onClick={() => setSelectedTime(slot)}
+                    >
+                      {slot.display}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Modal Buttons */}
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.75rem' }}>
+          <button onClick={onDismiss} className="btn-outlined" style={{ flex: 1 }}>
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="btn-primary"
+            disabled={!selectedDate || !selectedTime || !selectedSucursal || isSubmitting}
+            style={{ flex: 1 }}
+          >
+            {isSubmitting ? 'Confirmando...' : 'Confirmar Cita'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
