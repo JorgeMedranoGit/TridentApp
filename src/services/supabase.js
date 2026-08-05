@@ -202,28 +202,31 @@ export const api = {
     }
   },
 
-  // PROGRAMAR CIRUGÍA (RPC)
+  // PROGRAMAR CIRUGÍA (USA programar_sesion CON CATEGORIA 5)
   async programarCirugia(cirugiaData) {
     try {
-      const res = await fetch(`${BASE_URL}rpc/programar_cirugia`, {
+      const rpcRes = await fetch(`${BASE_URL}rpc/programar_sesion`, {
         method: "POST",
         headers,
         body: JSON.stringify({
           p_id_sucursal: cirugiaData.id_sucursal,
           p_id_cliente: cirugiaData.id_cliente || null,
+          p_id_categoria: 5,
           p_fecha: cirugiaData.fecha,
           p_hora_inicio: cirugiaData.hora_inicio,
           p_hora_fin: cirugiaData.hora_fin,
-          p_notas: cirugiaData.notas,
-          p_nombre_paciente: cirugiaData.nombre_paciente,
-          p_es_cirugia: true
+          p_notas: cirugiaData.notas || "Cirugía programada desde la Web",
+          p_nombre_paciente: cirugiaData.nombre_paciente || null,
+          p_estado: cirugiaData.estado || "Pendiente"
         })
       });
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err);
-      }
-      return true;
+      if (rpcRes.ok) return true;
+
+      // Fallback a agendarCita (inserción directa / RPC) con id_categoria 5
+      return this.agendarCita({
+        ...cirugiaData,
+        id_categoria: 5
+      });
     } catch (e) {
       console.error(e);
       throw e;
