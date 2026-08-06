@@ -115,7 +115,7 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     }
   };
 
-  // GenerateAvailableTimeSlots
+  // GenerateAvailableTimeSlots: 9:00 to 12:00 and 15:00 to 18:00
   const availableSlots = useMemo(() => {
     if (!selectedDate) return [];
     
@@ -124,47 +124,55 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     const dateOfSlots = new Date(year, month - 1, day);
     const dayOfWeek = dateOfSlots.getDay();
 
-    const startHour = 9;
-    const endHour = (dayOfWeek >= 1 && dayOfWeek <= 5) ? 17 : 11;
+    const isSaturday = dayOfWeek === 6;
 
-    for (let h = startHour; h <= endHour; h++) {
-      if (h === 12 || h === 13) continue; // Lunch break
-      [0, 15, 30, 45].forEach(m => {
-        const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
-        
-        // Calculate slot end time
-        const slotStartMinutes = h * 60 + m;
-        const slotEndMinutes = slotStartMinutes + duracionMinutos;
-        const endH = Math.floor(slotEndMinutes / 60);
-        const endM = slotEndMinutes % 60;
-        const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
+    // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 18:00 (Mon-Fri)
+    const shifts = isSaturday 
+      ? [{ start: 9, end: 12 }]
+      : [{ start: 9, end: 12 }, { start: 15, end: 18 }];
 
-        // Check if slot overlaps with any occupied range
-        const isOccupied = horasOcupadas.some(occ => {
-          const occStartParts = (occ.inicio || '').split(':').map(Number);
-          const occEndParts = (occ.fin || '').split(':').map(Number);
-          
-          const occStartMins = occStartParts[0] * 60 + occStartParts[1];
-          const occEndMins = occEndParts[0] * 60 + occEndParts[1];
+    shifts.forEach(shift => {
+      for (let h = shift.start; h < shift.end; h++) {
+        [0, 15, 30, 45].forEach(m => {
+          const slotStartMinutes = h * 60 + m;
+          const slotEndMinutes = slotStartMinutes + duracionMinutos;
 
-          return slotStartMinutes < occEndMins && slotEndMinutes > occStartMins;
-        });
+          // Slot must end by shift end limit (12:00 or 18:00)
+          const shiftEndMinutes = shift.end * 60;
+          if (slotEndMinutes > shiftEndMinutes) return;
 
-        // Filter out past times if date is today
-        const now = new Date();
-        const isToday = dateOfSlots.toDateString() === now.toDateString();
-        const currentMins = now.getHours() * 60 + now.getMinutes();
-        const isPast = isToday && slotStartMinutes <= currentMins;
+          const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+          const endH = Math.floor(slotEndMinutes / 60);
+          const endM = slotEndMinutes % 60;
+          const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
 
-        if (!isOccupied && !isPast) {
-          slots.push({
-            time: timeStr,
-            display: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
-            endTime: endTimeStr
+          // Check if slot overlaps with any occupied range
+          const isOccupied = horasOcupadas.some(occ => {
+            const occStartParts = (occ.inicio || '').split(':').map(Number);
+            const occEndParts = (occ.fin || '').split(':').map(Number);
+            
+            const occStartMins = occStartParts[0] * 60 + occStartParts[1];
+            const occEndMins = occEndParts[0] * 60 + occEndParts[1];
+
+            return slotStartMinutes < occEndMins && slotEndMinutes > occStartMins;
           });
-        }
-      });
-    }
+
+          // Filter out past times if date is today
+          const now = new Date();
+          const isToday = dateOfSlots.toDateString() === now.toDateString();
+          const currentMins = now.getHours() * 60 + now.getMinutes();
+          const isPast = isToday && slotStartMinutes <= currentMins;
+
+          if (!isOccupied && !isPast) {
+            slots.push({
+              time: timeStr,
+              display: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+              endTime: endTimeStr
+            });
+          }
+        });
+      }
+    });
 
     return slots;
   }, [selectedDate, duracionMinutos, horasOcupadas]);

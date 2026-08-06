@@ -459,6 +459,20 @@ function AdminCitaModal({ selectedDate, sucursales, clientes, sesiones, onDismis
       return;
     }
 
+    // Clinic Schedule Validation (09:00 - 12:00 & 15:00 - 18:00)
+    const mStart = 9 * 60; // 09:00
+    const mEnd = 12 * 60; // 12:00
+    const aStart = 15 * 60; // 15:00
+    const aEnd = 18 * 60; // 18:00
+
+    const inMorning = sMins >= mStart && eMins <= mEnd;
+    const inAfternoon = sMins >= aStart && eMins <= aEnd;
+
+    if (!inMorning && !inAfternoon) {
+      setErrorMessage('⚠️ El horario de atención es de 09:00 a 12:00 y de 15:00 a 18:00.');
+      return;
+    }
+
     // Double booking validation
     const hasOverlap = (sesiones || []).some(s => {
       if (s.fecha !== fechaCita) return false;
@@ -687,6 +701,20 @@ function AdminCirugiaModal({ selectedDate, sucursales, clientes, sesiones, onDis
 
     if (eMins <= sMins) {
       setErrorMessage('La hora de fin debe ser posterior a la hora de inicio.');
+      return;
+    }
+
+    // Clinic Schedule Validation (09:00 - 12:00 & 15:00 - 18:00)
+    const mStart = 9 * 60; // 09:00
+    const mEnd = 12 * 60; // 12:00
+    const aStart = 15 * 60; // 15:00
+    const aEnd = 18 * 60; // 18:00
+
+    const inMorning = sMins >= mStart && eMins <= mEnd;
+    const inAfternoon = sMins >= aStart && eMins <= aEnd;
+
+    if (!inMorning && !inAfternoon) {
+      setErrorMessage('⚠️ El horario de atención es de 09:00 a 12:00 y de 15:00 a 18:00.');
       return;
     }
 
