@@ -126,10 +126,10 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
 
     const isSaturday = dayOfWeek === 6;
 
-    // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 18:00 (Mon-Fri)
+    // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 20:00 (Mon-Fri)
     const shifts = isSaturday 
       ? [{ start: 9, end: 12 }]
-      : [{ start: 9, end: 12 }, { start: 15, end: 18 }];
+      : [{ start: 9, end: 12 }, { start: 15, end: 20 }];
 
     shifts.forEach(shift => {
       for (let h = shift.start; h < shift.end; h++) {
@@ -251,7 +251,7 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
         hora_inicio: selectedTime.time,
         hora_fin: selectedTime.endTime,
         notas: `Cita ${tipoPaciente} agendada desde la Web`,
-        estado: 'Pendiente'
+        estado: 'Confirmada'
       });
 
       onSuccess();

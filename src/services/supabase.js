@@ -17,8 +17,8 @@ export const api = {
     } catch (e) {
       console.error(e);
       return [
-        { id_sucursal: 2, direccion: "La Paz", hora_apertura: "09:00:00", hora_cierre: "18:00:00" },
-        { id_sucursal: 4, direccion: "El Alto", hora_apertura: "09:00:00", hora_cierre: "18:00:00" }
+        { id_sucursal: 2, direccion: "La Paz", hora_apertura: "09:00:00", hora_cierre: "20:00:00" },
+        { id_sucursal: 4, direccion: "El Alto", hora_apertura: "09:00:00", hora_cierre: "20:00:00" }
       ];
     }
   },
@@ -171,7 +171,7 @@ export const api = {
           hora_fin: sesionData.hora_fin,
           notas: sesionData.notas || "Cita programada desde la Web",
           nombre_paciente: sesionData.nombre_paciente || null,
-          estado: sesionData.estado || "Pendiente"
+          estado: sesionData.estado || "Confirmada"
         })
       });
       if (res.ok) return true;
@@ -188,7 +188,7 @@ export const api = {
           p_hora_fin: sesionData.hora_fin,
           p_notas: sesionData.notas || "Cita programada desde la Web",
           p_nombre_paciente: sesionData.nombre_paciente || null,
-          p_estado: sesionData.estado || "Pendiente"
+          p_estado: sesionData.estado || "Confirmada"
         })
       });
       if (!rpcRes.ok) {
@@ -217,7 +217,7 @@ export const api = {
           p_hora_fin: cirugiaData.hora_fin,
           p_notas: cirugiaData.notas || "Cirugía programada desde la Web",
           p_nombre_paciente: cirugiaData.nombre_paciente || null,
-          p_estado: cirugiaData.estado || "Pendiente"
+          p_estado: cirugiaData.estado || "Confirmada"
         })
       });
       if (rpcRes.ok) return true;
