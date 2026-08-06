@@ -50,27 +50,25 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     const checkDate = new Date(dateObj);
     checkDate.setHours(0, 0, 0, 0);
 
+    // Cannot book past dates
+    if (checkDate < today) return false;
+
     const dayOfWeek = checkDate.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
 
-    // Rule 1: No Friday (5), Saturday (6), or Sunday (0)
-    if (dayOfWeek === 0 || dayOfWeek === 5 || dayOfWeek === 6) return false;
+    // Sunday (0) is closed
+    if (dayOfWeek === 0) return false;
 
-    // Rule 2: Anticipation Days Rule
+    // Rule: Anticipation Max Days Rule
     const sucursalId = selectedSucursal?.id_sucursal;
     const regla = reglas.find(r => r.id_sucursal === sucursalId);
 
-    if (regla) {
-      const minDate = new Date(today);
-      minDate.setDate(minDate.getDate() + (regla.dias_min || 1));
+    if (regla && regla.dias_max) {
       const maxDate = new Date(today);
       maxDate.setDate(maxDate.getDate() + (regla.dias_max || 30));
-
-      if (checkDate < minDate || checkDate > maxDate) return false;
-    } else {
-      if (checkDate < today) return false;
+      if (checkDate > maxDate) return false;
     }
 
-    // Rule 3: Ortodoncia Specific Branch Days
+    // Rule: Ortodoncia Specific Branch Days
     if (isOrtodoncia && selectedSucursal) {
       const dir = (selectedSucursal.direccion || '').toLowerCase();
       const isElAlto = sucursalId === 4 || dir.includes('alto');
@@ -86,6 +84,35 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     }
 
     return true;
+  };
+
+  const getTodayStr = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const getTomorrowStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const handleQuickDateSelect = (dateStr) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    if (isDayEnabled(dateObj)) {
+      setSelectedDate(dateStr);
+      setSelectedTime(null);
+      setErrorMessage('');
+    } else {
+      setErrorMessage('La fecha seleccionada no está disponible para atención.');
+    }
   };
 
   // GenerateAvailableTimeSlots
@@ -161,6 +188,7 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     if (isDayEnabled(dateObj)) {
       setSelectedDate(formatted);
       setSelectedTime(null);
+      setErrorMessage('');
     }
   };
 
@@ -168,7 +196,7 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     if (!selectedDate || !selectedTime || !selectedSucursal) return;
 
     // Check active appointment restriction
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayStr();
     const hasActiveAppointment = userSesiones.some(s => {
       const isFuture = s.fecha >= todayStr;
       const isPendingOrConfirmed = s.estado === 'Pendiente' || s.estado === 'Confirmada';
@@ -180,11 +208,31 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
       return;
     }
 
+    // Overlap validation check
+    const toMins = (tStr) => {
+      if (!tStr) return 0;
+      const [h, m] = tStr.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    const newStartMins = toMins(selectedTime.time);
+    const newEndMins = toMins(selectedTime.endTime);
+
+    const isOverlap = horasOcupadas.some(occ => {
+      const occStart = toMins(occ.inicio);
+      const occEnd = toMins(occ.fin);
+      return newStartMins < occEnd && newEndMins > occStart;
+    });
+
+    if (isOverlap) {
+      setErrorMessage('No se puede agendar: Ya existe una cita ocupada a la misma hora.');
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage('');
 
     try {
-      const slotObj = availableSlots.find(s => s.time === selectedTime.time);
       const categoryId = tipoPaciente === 'Ortodoncia' ? 3 : (selectedCategoria?.id_categoria || 2);
 
       await api.agendarCita({
@@ -326,8 +374,32 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
           {/* Calendar Date Picker */}
           {selectedSucursal && (tipoPaciente === 'Ortodoncia' || selectedCategoria) && (
             <div style={{ marginTop: '0.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <span className="input-label"><CalendarIcon size={15} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Seleccionar Fecha</span>
+                
+                {/* Quick Hoy / Mañana buttons */}
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickDateSelect(getTodayStr())}
+                    className={`btn-outlined ${selectedDate === getTodayStr() ? 'selected' : ''}`}
+                    style={{ padding: '0.2rem 0.6rem', fontSize: '0.78rem', height: 'auto', background: selectedDate === getTodayStr() ? 'var(--sea-green)' : 'transparent', color: selectedDate === getTodayStr() ? '#fff' : 'var(--frosted-mint)' }}
+                  >
+                    Hoy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickDateSelect(getTomorrowStr())}
+                    className={`btn-outlined ${selectedDate === getTomorrowStr() ? 'selected' : ''}`}
+                    style={{ padding: '0.2rem 0.6rem', fontSize: '0.78rem', height: 'auto', background: selectedDate === getTomorrowStr() ? 'var(--sea-green)' : 'transparent', color: selectedDate === getTomorrowStr() ? '#fff' : 'var(--frosted-mint)' }}
+                  >
+                    Mañana
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--celadon)' }}>Calendario mensual:</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <button
                     type="button"

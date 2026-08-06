@@ -78,6 +78,21 @@ Nombre:
 Tratamiento: `
   );
 
+  // Tabs for patient view (Active vs Finished appointments)
+  const [patientTab, setPatientTab] = useState('activas');
+
+  const citasActivas = sesiones.filter(s => {
+    const est = (s.estado || '').toLowerCase();
+    return est !== 'completada' && est !== 'cancelada';
+  });
+
+  const citasTerminadas = sesiones.filter(s => {
+    const est = (s.estado || '').toLowerCase();
+    return est === 'completada' || est === 'cancelada';
+  });
+
+  const currentPatientList = patientTab === 'activas' ? citasActivas : citasTerminadas;
+
   return (
     <div className="bg-decorated" style={{ minHeight: '100vh', padding: '1.5rem', paddingBottom: '4rem' }}>
       <div style={{ maxWidth: '640px', margin: '0 auto' }}>
@@ -119,35 +134,62 @@ Tratamiento: `
           </div>
         ) : (
           <>
+            {/* Tabs for Active vs Finished Appointments */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+              <button
+                onClick={() => setPatientTab('activas')}
+                className={`btn-outlined ${patientTab === 'activas' ? 'selected' : ''}`}
+                style={{
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.88rem',
+                  background: patientTab === 'activas' ? 'var(--dark-emerald)' : 'transparent',
+                  color: patientTab === 'activas' ? 'var(--frosted-mint)' : 'var(--celadon)',
+                  borderColor: patientTab === 'activas' ? 'var(--mint-leaf)' : 'transparent'
+                }}
+              >
+                Próximas Citas ({citasActivas.length})
+              </button>
+
+              <button
+                onClick={() => setPatientTab('historial')}
+                className={`btn-outlined ${patientTab === 'historial' ? 'selected' : ''}`}
+                style={{
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.88rem',
+                  background: patientTab === 'historial' ? 'var(--dark-emerald)' : 'transparent',
+                  color: patientTab === 'historial' ? 'var(--frosted-mint)' : 'var(--celadon)',
+                  borderColor: patientTab === 'historial' ? 'var(--mint-leaf)' : 'transparent'
+                }}
+              >
+                Historial / Terminadas ({citasTerminadas.length})
+              </button>
+            </div>
+
             {/* Appointments List */}
-            {sesiones.length === 0 ? (
+            {currentPatientList.length === 0 ? (
               <div className="glass-panel" style={{ padding: '3rem 1.5rem', textAlign: 'center', marginBottom: '2rem' }}>
                 <Calendar size={64} color="var(--sea-green)" style={{ margin: '0 auto 1rem' }} />
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--frosted-mint)', marginBottom: '0.4rem' }}>
-                  Sin citas agendadas
+                  {patientTab === 'activas' ? 'Sin citas pendientes' : 'Sin citas en el historial'}
                 </h3>
                 <p style={{ fontSize: '0.88rem', color: 'var(--celadon)', marginBottom: '1.5rem' }}>
-                  Agenda tu primera cita en unos pocos pasos
+                  {patientTab === 'activas' ? 'Agenda tu próxima cita en unos pocos pasos' : 'Las citas completadas o canceladas se guardarán en este historial'}
                 </p>
-                <button
-                  onClick={() => setShowAgendarModal(true)}
-                  className="btn-primary"
-                  style={{ padding: '0.85rem 2rem', fontSize: '0.95rem' }}
-                >
-                  <Plus size={18} />
-                  <span>Agendar cita</span>
-                </button>
+                {patientTab === 'activas' && (
+                  <button
+                    onClick={() => setShowAgendarModal(true)}
+                    className="btn-primary"
+                    style={{ padding: '0.85rem 2rem', fontSize: '0.95rem' }}
+                  >
+                    <Plus size={18} />
+                    <span>Agendar cita</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div style={{ marginBottom: '2rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
-                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--celadon-light)' }}>
-                    Próximas citas ({sesiones.length})
-                  </h2>
-                </div>
-
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {sesiones.map((sesion) => {
+                  {currentPatientList.map((sesion) => {
                     const estado = (sesion.estado || 'Pendiente').toLowerCase();
                     const badgeClass = `badge-${estado}`;
 
@@ -198,14 +240,16 @@ Tratamiento: `
                 </div>
 
                 {/* Schedule New Appointment Button */}
-                <button
-                  onClick={() => setShowAgendarModal(true)}
-                  className="btn-primary"
-                  style={{ width: '100%', height: '52px', marginTop: '1.25rem', fontSize: '1rem' }}
-                >
-                  <Plus size={20} />
-                  <span>Agendar nueva cita</span>
-                </button>
+                {patientTab === 'activas' && (
+                  <button
+                    onClick={() => setShowAgendarModal(true)}
+                    className="btn-primary"
+                    style={{ width: '100%', height: '52px', marginTop: '1.25rem', fontSize: '1rem' }}
+                  >
+                    <Plus size={20} />
+                    <span>Agendar nueva cita</span>
+                  </button>
+                )}
               </div>
             )}
 

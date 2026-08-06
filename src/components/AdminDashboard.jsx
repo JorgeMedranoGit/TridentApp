@@ -13,6 +13,9 @@ export default function AdminDashboard({ user, onLogout }) {
   const [categorias, setCategorias] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Tab for active vs finished appointments
+  const [adminTab, setAdminTab] = useState('activas'); // 'activas' | 'terminadas'
+
   // Modals state
   const [showAgregarModal, setShowAgregarModal] = useState(false);
   const [showCirugiaModal, setShowCirugiaModal] = useState(false);
@@ -49,6 +52,21 @@ export default function AdminDashboard({ user, onLogout }) {
       .filter(s => s.fecha === selectedDate)
       .sort((a, b) => (a.hora_inicio || '').localeCompare(b.hora_inicio || ''));
   }, [sesiones, selectedDate]);
+
+  // Separate active vs completed/canceled appointments
+  const citasActivasDelDia = useMemo(() => {
+    return citasDelDia.filter(s => {
+      const est = (s.estado || '').toLowerCase();
+      return est !== 'completada' && est !== 'cancelada';
+    });
+  }, [citasDelDia]);
+
+  const citasTerminadasDelDia = useMemo(() => {
+    return citasDelDia.filter(s => {
+      const est = (s.estado || '').toLowerCase();
+      return est === 'completada' || est === 'cancelada';
+    });
+  }, [citasDelDia]);
 
   // Resumen del día statistics
   const stats = useMemo(() => {
@@ -94,7 +112,7 @@ export default function AdminDashboard({ user, onLogout }) {
       const cli = clientes.find(c => c.id_cliente === sesion.id_cliente);
       if (cli) return `${cli.nombre || ''} ${cli.apellido || ''}`.trim();
     }
-    return 'Paciente Externe / General';
+    return 'Paciente Externo / General';
   };
 
   // Calendar Helpers for top date selector
@@ -107,6 +125,8 @@ export default function AdminDashboard({ user, onLogout }) {
   }, [calendarMonth]);
 
   const todayStr = new Date().toISOString().split('T')[0];
+
+  const currentList = adminTab === 'activas' ? citasActivasDelDia : citasTerminadasDelDia;
 
   return (
     <div className="bg-decorated" style={{ minHeight: '100vh', padding: '1.5rem', paddingBottom: '5rem' }}>
@@ -217,22 +237,53 @@ export default function AdminDashboard({ user, onLogout }) {
           </div>
         </div>
 
-        {/* Appointments List for Selected Date */}
+        {/* Tabs for Active vs Finished Appointments */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+          <button
+            onClick={() => setAdminTab('activas')}
+            className={`btn-outlined ${adminTab === 'activas' ? 'selected' : ''}`}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.88rem',
+              background: adminTab === 'activas' ? 'var(--dark-emerald)' : 'transparent',
+              color: adminTab === 'activas' ? 'var(--frosted-mint)' : 'var(--celadon)',
+              borderColor: adminTab === 'activas' ? 'var(--mint-leaf)' : 'transparent'
+            }}
+          >
+            Citas Activas ({citasActivasDelDia.length})
+          </button>
+
+          <button
+            onClick={() => setAdminTab('terminadas')}
+            className={`btn-outlined ${adminTab === 'terminadas' ? 'selected' : ''}`}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.88rem',
+              background: adminTab === 'terminadas' ? 'var(--dark-emerald)' : 'transparent',
+              color: adminTab === 'terminadas' ? 'var(--frosted-mint)' : 'var(--celadon)',
+              borderColor: adminTab === 'terminadas' ? 'var(--mint-leaf)' : 'transparent'
+            }}
+          >
+            Citas Terminadas / Historial ({citasTerminadasDelDia.length})
+          </button>
+        </div>
+
+        {/* Appointments List */}
         {isLoading ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--mint-leaf)' }}>Cargando agenda...</div>
-        ) : citasDelDia.length === 0 ? (
+        ) : currentList.length === 0 ? (
           <div className="glass-panel" style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
             <CalendarIcon size={56} color="var(--sea-green)" style={{ margin: '0 auto 1rem' }} />
             <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--frosted-mint)' }}>
-              No hay citas para este día
+              {adminTab === 'activas' ? 'No hay citas activas para este día' : 'No hay citas terminadas en el historial para este día'}
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--celadon)', marginTop: '0.25rem' }}>
-              Usa los botones flotantes de abajo para agregar una cita o cirugía.
+              {adminTab === 'activas' ? 'Usa los botones flotantes de abajo para agregar una cita o cirugía.' : 'Las citas completadas o canceladas aparecerán en esta sección.'}
             </p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-            {citasDelDia.map(sesion => {
+            {currentList.map(sesion => {
               const estado = (sesion.estado || 'Pendiente').toLowerCase();
               const badgeClass = `badge-${estado}`;
 
@@ -327,6 +378,7 @@ export default function AdminDashboard({ user, onLogout }) {
           selectedDate={selectedDate}
           sucursales={sucursales}
           clientes={clientes}
+          sesiones={sesiones}
           onDismiss={() => setShowAgregarModal(false)}
           onSuccess={() => { setShowAgregarModal(false); loadData(); }}
         />
@@ -338,6 +390,7 @@ export default function AdminDashboard({ user, onLogout }) {
           selectedDate={selectedDate}
           sucursales={sucursales}
           clientes={clientes}
+          sesiones={sesiones}
           onDismiss={() => setShowCirugiaModal(false)}
           onSuccess={() => { setShowCirugiaModal(false); loadData(); }}
         />
@@ -359,38 +412,89 @@ export default function AdminDashboard({ user, onLogout }) {
 }
 
 // Sub-component: Admin Cita Modal
-function AdminCitaModal({ selectedDate, sucursales, clientes, onDismiss, onSuccess }) {
+function AdminCitaModal({ selectedDate, sucursales, clientes, sesiones, onDismiss, onSuccess }) {
+  const [fechaCita, setFechaCita] = useState(selectedDate);
   const [paciente, setPaciente] = useState('');
   const [clienteId, setClienteId] = useState('');
   const [tratamiento, setTratamiento] = useState('');
-  const [sucursalId, setSucursalId] = useState('');
-  const [horaInicio, setHoraInicio] = useState('09:00:00');
+  const [sucursalId, setSucursalId] = useState(sucursales[0]?.id_sucursal || 2);
+  const [horaInicio, setHoraInicio] = useState('09:00');
+  const [horaFin, setHoraFin] = useState('09:30');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // Auto calculate default end time when start time changes if end time is earlier
+  const handleHoraInicioChange = (e) => {
+    const newStart = e.target.value;
+    setHoraInicio(newStart);
+
+    if (newStart) {
+      const [h, m] = newStart.split(':').map(Number);
+      const endMins = h * 60 + m + 30;
+      const endH = Math.floor(endMins / 60);
+      const remM = endMins % 60;
+      const calcEnd = `${String(endH).padStart(2, '0')}:${String(remM).padStart(2, '0')}`;
+      setHoraFin(calcEnd);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!paciente.trim() && !clienteId) return;
 
+    setErrorMessage('');
+
+    const toMins = (tStr) => {
+      if (!tStr) return 0;
+      const parts = tStr.split(':').map(Number);
+      return parts[0] * 60 + parts[1];
+    };
+
+    const sMins = toMins(horaInicio);
+    const eMins = toMins(horaFin);
+    const targetSucursal = Number(sucursalId || sucursales[0]?.id_sucursal || 2);
+
+    if (eMins <= sMins) {
+      setErrorMessage('La hora de fin debe ser posterior a la hora de inicio.');
+      return;
+    }
+
+    // Double booking validation
+    const hasOverlap = (sesiones || []).some(s => {
+      if (s.fecha !== fechaCita) return false;
+      if (Number(s.id_sucursal) !== targetSucursal) return false;
+      if ((s.estado || '').toLowerCase() === 'cancelada') return false;
+
+      const occStart = toMins(s.hora_inicio);
+      const occEnd = toMins(s.hora_fin);
+
+      return sMins < occEnd && eMins > occStart;
+    });
+
+    if (hasOverlap) {
+      setErrorMessage('⚠️ No se puede agendar: Ya existe otra cita registrada a esta misma hora y sucursal.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const [h, m] = horaInicio.split(':').map(Number);
-      const finH = String(h + 1).padStart(2, '0');
-      const horaFin = `${finH}:${String(m).padStart(2, '0')}:00`;
+      const formattedStart = horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio;
+      const formattedEnd = horaFin.length === 5 ? `${horaFin}:00` : horaFin;
 
       await api.agendarCita({
-        id_sucursal: Number(sucursalId || sucursales[0]?.id_sucursal || 2),
+        id_sucursal: targetSucursal,
         id_cliente: clienteId ? Number(clienteId) : null,
         id_categoria: 2, // Consulta general
-        fecha: selectedDate,
-        hora_inicio: horaInicio,
-        hora_fin: horaFin,
+        fecha: fechaCita,
+        hora_inicio: formattedStart,
+        hora_fin: formattedEnd,
         notas: tratamiento || 'Cita agendada por Administrador',
         nombre_paciente: paciente || null,
         estado: 'Confirmada'
       });
       onSuccess();
     } catch (err) {
-      alert('Error al agendar cita admin: ' + err.message);
+      setErrorMessage('Error al agendar cita admin: ' + err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -407,8 +511,14 @@ function AdminCitaModal({ selectedDate, sucursales, clientes, onDismiss, onSucce
           Nueva Cita Admin
         </h2>
         <p style={{ fontSize: '0.85rem', color: 'var(--celadon)', marginBottom: '1.2rem' }}>
-          Fecha seleccionada: {selectedDate}
+          Ingresa la fecha, hora de inicio y fin para la cita
         </p>
+
+        {errorMessage && (
+          <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#ff9999', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+            {errorMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
           
@@ -481,16 +591,44 @@ function AdminCitaModal({ selectedDate, sucursales, clientes, onDismiss, onSucce
             </select>
           </div>
 
-          {/* Hora Inicio */}
+          {/* Día / Fecha */}
           <div className="input-group" style={{ marginBottom: 0 }}>
-            <label className="input-label">Hora de Inicio</label>
+            <label className="input-label">Día / Fecha</label>
             <input
-              type="time"
+              type="date"
               className="input-field"
               style={{ paddingLeft: '1rem' }}
-              value={horaInicio}
-              onChange={(e) => setHoraInicio(e.target.value)}
+              value={fechaCita}
+              onChange={(e) => setFechaCita(e.target.value)}
+              required
             />
+          </div>
+
+          {/* Hora Inicio y Hora Fin */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label className="input-label">Hora de Inicio</label>
+              <input
+                type="time"
+                className="input-field"
+                style={{ paddingLeft: '1rem' }}
+                value={horaInicio}
+                onChange={handleHoraInicioChange}
+                required
+              />
+            </div>
+
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label className="input-label">Hora de Fin</label>
+              <input
+                type="time"
+                className="input-field"
+                style={{ paddingLeft: '1rem' }}
+                value={horaFin}
+                onChange={(e) => setHoraFin(e.target.value)}
+                required
+              />
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
@@ -506,36 +644,86 @@ function AdminCitaModal({ selectedDate, sucursales, clientes, onDismiss, onSucce
 }
 
 // Sub-component: Admin Cirugia Modal
-function AdminCirugiaModal({ selectedDate, sucursales, clientes, onDismiss, onSuccess }) {
+function AdminCirugiaModal({ selectedDate, sucursales, clientes, sesiones, onDismiss, onSuccess }) {
+  const [fechaCirugia, setFechaCirugia] = useState(selectedDate);
   const [paciente, setPaciente] = useState('');
   const [clienteId, setClienteId] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [sucursalId, setSucursalId] = useState('');
-  const [horaInicio, setHoraInicio] = useState('08:00:00');
+  const [sucursalId, setSucursalId] = useState(sucursales[0]?.id_sucursal || 2);
+  const [horaInicio, setHoraInicio] = useState('09:00');
+  const [horaFin, setHoraFin] = useState('11:00');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const handleHoraInicioChange = (e) => {
+    const newStart = e.target.value;
+    setHoraInicio(newStart);
+
+    if (newStart) {
+      const [h, m] = newStart.split(':').map(Number);
+      const endMins = (h + 2) * 60 + m; // 2 hour duration default for surgery
+      const endH = Math.floor(endMins / 60);
+      const remM = endMins % 60;
+      const calcEnd = `${String(endH).padStart(2, '0')}:${String(remM).padStart(2, '0')}`;
+      setHoraFin(calcEnd);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!paciente.trim()) return;
 
+    setErrorMessage('');
+
+    const toMins = (tStr) => {
+      if (!tStr) return 0;
+      const parts = tStr.split(':').map(Number);
+      return parts[0] * 60 + parts[1];
+    };
+
+    const sMins = toMins(horaInicio);
+    const eMins = toMins(horaFin);
+    const targetSucursal = Number(sucursalId || sucursales[0]?.id_sucursal || 2);
+
+    if (eMins <= sMins) {
+      setErrorMessage('La hora de fin debe ser posterior a la hora de inicio.');
+      return;
+    }
+
+    // Double booking validation
+    const hasOverlap = (sesiones || []).some(s => {
+      if (s.fecha !== fechaCirugia) return false;
+      if (Number(s.id_sucursal) !== targetSucursal) return false;
+      if ((s.estado || '').toLowerCase() === 'cancelada') return false;
+
+      const occStart = toMins(s.hora_inicio);
+      const occEnd = toMins(s.hora_fin);
+
+      return sMins < occEnd && eMins > occStart;
+    });
+
+    if (hasOverlap) {
+      setErrorMessage('⚠️ No se puede agendar la cirugía: Ya existe una cita activa en ese rango de horario.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const [h, m] = horaInicio.split(':').map(Number);
-      const finH = String(h + 2).padStart(2, '0'); // Cirugía dura 2 horas
-      const horaFin = `${finH}:${String(m).padStart(2, '0')}:00`;
+      const formattedStart = horaInicio.length === 5 ? `${horaInicio}:00` : horaInicio;
+      const formattedEnd = horaFin.length === 5 ? `${horaFin}:00` : horaFin;
 
       await api.programarCirugia({
-        id_sucursal: Number(sucursalId || sucursales[0]?.id_sucursal || 2),
+        id_sucursal: targetSucursal,
         id_cliente: clienteId ? Number(clienteId) : null,
-        fecha: selectedDate,
-        hora_inicio: horaInicio,
-        hora_fin: horaFin,
+        fecha: fechaCirugia,
+        hora_inicio: formattedStart,
+        hora_fin: formattedEnd,
         notas: descripcion || 'Cirugía quirúrgica programada por Admin',
         nombre_paciente: paciente
       });
       onSuccess();
     } catch (err) {
-      alert('Error al programar cirugía: ' + err.message);
+      setErrorMessage('Error al programar cirugía: ' + err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -552,8 +740,14 @@ function AdminCirugiaModal({ selectedDate, sucursales, clientes, onDismiss, onSu
           Programar Cirugía Quirúrgica
         </h2>
         <p style={{ fontSize: '0.85rem', color: 'var(--celadon)', marginBottom: '1.2rem' }}>
-          Bloqueará 2 horas de agenda para la fecha {selectedDate}
+          Bloqueará el rango de horario deseado para la cirugía
         </p>
+
+        {errorMessage && (
+          <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#ff9999', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+            {errorMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
           <div className="input-group" style={{ marginBottom: 0 }}>
@@ -618,20 +812,44 @@ function AdminCirugiaModal({ selectedDate, sucursales, clientes, onDismiss, onSu
             </select>
           </div>
 
+          {/* Día / Fecha */}
           <div className="input-group" style={{ marginBottom: 0 }}>
-            <label className="input-label">Hora de Inicio (Bloquea 2 horas)</label>
-            <select
+            <label className="input-label">Día / Fecha</label>
+            <input
+              type="date"
               className="input-field"
               style={{ paddingLeft: '1rem' }}
-              value={horaInicio}
-              onChange={(e) => setHoraInicio(e.target.value)}
-            >
-              <option value="08:00:00">08:00 AM</option>
-              <option value="10:30:00">10:30 AM</option>
-              <option value="13:00:00">01:00 PM</option>
-              <option value="15:30:00">03:30 PM</option>
-              <option value="18:00:00">06:00 PM</option>
-            </select>
+              value={fechaCirugia}
+              onChange={(e) => setFechaCirugia(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Hora Inicio y Hora Fin */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label className="input-label">Hora de Inicio</label>
+              <input
+                type="time"
+                className="input-field"
+                style={{ paddingLeft: '1rem' }}
+                value={horaInicio}
+                onChange={handleHoraInicioChange}
+                required
+              />
+            </div>
+
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <label className="input-label">Hora de Fin</label>
+              <input
+                type="time"
+                className="input-field"
+                style={{ paddingLeft: '1rem' }}
+                value={horaFin}
+                onChange={(e) => setHoraFin(e.target.value)}
+                required
+              />
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
