@@ -55,8 +55,8 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
 
     const dayOfWeek = checkDate.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
 
-    // Sunday (0) is closed
-    if (dayOfWeek === 0) return false;
+    // Only Monday (1) through Thursday (4) are open
+    if (dayOfWeek < 1 || dayOfWeek > 4) return false;
 
     // Rule: Anticipation Max Days Rule
     const sucursalId = selectedSucursal?.id_sucursal;
@@ -115,21 +115,16 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     }
   };
 
-  // GenerateAvailableTimeSlots: 9:00 to 12:00 and 15:00 to 18:00
+  // GenerateAvailableTimeSlots: 9:00 to 12:00 and 15:00 to 19:00
   const availableSlots = useMemo(() => {
     if (!selectedDate) return [];
     
     const slots = [];
     const [year, month, day] = selectedDate.split('-').map(Number);
     const dateOfSlots = new Date(year, month - 1, day);
-    const dayOfWeek = dateOfSlots.getDay();
 
-    const isSaturday = dayOfWeek === 6;
-
-    // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 20:00 (Mon-Fri)
-    const shifts = isSaturday 
-      ? [{ start: 9, end: 12 }]
-      : [{ start: 9, end: 12 }, { start: 15, end: 20 }];
+    // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 19:00 (Mon-Thu)
+    const shifts = [{ start: 9, end: 12 }, { start: 15, end: 19 }];
 
     shifts.forEach(shift => {
       for (let h = shift.start; h < shift.end; h++) {
@@ -137,7 +132,7 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
           const slotStartMinutes = h * 60 + m;
           const slotEndMinutes = slotStartMinutes + duracionMinutos;
 
-          // Slot must end by shift end limit (12:00 or 18:00)
+          // Slot must end by shift end limit (12:00 or 19:00)
           const shiftEndMinutes = shift.end * 60;
           if (slotEndMinutes > shiftEndMinutes) return;
 

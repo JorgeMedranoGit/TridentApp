@@ -459,17 +459,25 @@ function AdminCitaModal({ selectedDate, sucursales, clientes, sesiones, onDismis
       return;
     }
 
-    // Clinic Schedule Validation (09:00 - 12:00 & 15:00 - 20:00)
+    const dateParts = fechaCita.split('-').map(Number);
+    const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    const dayOfWeek = dateObj.getDay();
+    if (dayOfWeek < 1 || dayOfWeek > 4) {
+      setErrorMessage('⚠️ La atención es únicamente de Lunes a Jueves.');
+      return;
+    }
+
+    // Clinic Schedule Validation (09:00 - 12:00 & 15:00 - 19:00)
     const mStart = 9 * 60; // 09:00
     const mEnd = 12 * 60; // 12:00
     const aStart = 15 * 60; // 15:00
-    const aEnd = 20 * 60; // 20:00
+    const aEnd = 19 * 60; // 19:00 (7 PM)
 
     const inMorning = sMins >= mStart && eMins <= mEnd;
     const inAfternoon = sMins >= aStart && eMins <= aEnd;
 
     if (!inMorning && !inAfternoon) {
-      setErrorMessage('⚠️ El horario de atención es de 09:00 a 12:00 y de 15:00 a 20:00.');
+      setErrorMessage('⚠️ El horario de atención es de 09:00 a 12:00 y de 15:00 a 19:00.');
       return;
     }
 
@@ -704,17 +712,25 @@ function AdminCirugiaModal({ selectedDate, sucursales, clientes, sesiones, onDis
       return;
     }
 
-    // Clinic Schedule Validation (09:00 - 12:00 & 15:00 - 20:00)
+    const dateParts = fechaCirugia.split('-').map(Number);
+    const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    const dayOfWeek = dateObj.getDay();
+    if (dayOfWeek < 1 || dayOfWeek > 4) {
+      setErrorMessage('⚠️ La atención es únicamente de Lunes a Jueves.');
+      return;
+    }
+
+    // Clinic Schedule Validation (09:00 - 12:00 & 15:00 - 19:00)
     const mStart = 9 * 60; // 09:00
     const mEnd = 12 * 60; // 12:00
     const aStart = 15 * 60; // 15:00
-    const aEnd = 20 * 60; // 20:00
+    const aEnd = 19 * 60; // 19:00 (7 PM)
 
     const inMorning = sMins >= mStart && eMins <= mEnd;
     const inAfternoon = sMins >= aStart && eMins <= aEnd;
 
     if (!inMorning && !inAfternoon) {
-      setErrorMessage('⚠️ El horario de atención es de 09:00 a 12:00 y de 15:00 a 20:00.');
+      setErrorMessage('⚠️ El horario de atención es de 09:00 a 12:00 y de 15:00 a 19:00.');
       return;
     }
 
