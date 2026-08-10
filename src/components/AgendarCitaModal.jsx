@@ -115,7 +115,7 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     }
   };
 
-  // GenerateAvailableTimeSlots: 9:00 to 12:00 and 15:00 to 19:00
+  // GenerateAvailableTimeSlots: 9:00 to 12:00 and 15:00 to 20:00
   const availableSlots = useMemo(() => {
     if (!selectedDate) return [];
     
@@ -123,8 +123,8 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     const [year, month, day] = selectedDate.split('-').map(Number);
     const dateOfSlots = new Date(year, month - 1, day);
 
-    // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 19:00 (Mon-Thu)
-    const shifts = [{ start: 9, end: 12 }, { start: 15, end: 19 }];
+    // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 20:00 (Mon-Thu)
+    const shifts = [{ start: 9, end: 12 }, { start: 15, end: 20 }];
 
     shifts.forEach(shift => {
       for (let h = shift.start; h < shift.end; h++) {
@@ -132,7 +132,7 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
           const slotStartMinutes = h * 60 + m;
           const slotEndMinutes = slotStartMinutes + duracionMinutos;
 
-          // Slot must end by shift end limit (12:00 or 19:00)
+          // Slot must end by shift end limit (12:00 or 20:00)
           const shiftEndMinutes = shift.end * 60;
           if (slotEndMinutes > shiftEndMinutes) return;
 

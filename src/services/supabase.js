@@ -17,8 +17,8 @@ export const api = {
     } catch (e) {
       console.error(e);
       return [
-        { id_sucursal: 2, direccion: "La Paz", hora_apertura: "09:00:00", hora_cierre: "19:00:00" },
-        { id_sucursal: 4, direccion: "El Alto", hora_apertura: "09:00:00", hora_cierre: "19:00:00" }
+        { id_sucursal: 2, direccion: "La Paz", hora_apertura: "09:00:00", hora_cierre: "20:00:00" },
+        { id_sucursal: 4, direccion: "El Alto", hora_apertura: "09:00:00", hora_cierre: "20:00:00" }
       ];
     }
   },
