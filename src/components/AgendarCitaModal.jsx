@@ -55,8 +55,13 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
 
     const dayOfWeek = checkDate.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
 
-    // Only Monday (1) through Thursday (4) are open
-    if (dayOfWeek < 1 || dayOfWeek > 4) return false;
+    // Pacientes Nuevos: Lunes (1) a Viernes (5)
+    // Otros Pacientes (ej. Ortodoncia): Lunes (1) a Jueves (4)
+    if (tipoPaciente === 'Nuevo') {
+      if (dayOfWeek < 1 || dayOfWeek > 5) return false;
+    } else {
+      if (dayOfWeek < 1 || dayOfWeek > 4) return false;
+    }
 
     // Rule: Anticipation Max Days Rule
     const sucursalId = selectedSucursal?.id_sucursal;
@@ -115,7 +120,9 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     }
   };
 
-  // GenerateAvailableTimeSlots: 9:00 to 12:00 and 15:00 to 20:00
+  // GenerateAvailableTimeSlots:
+  // Pacientes Nuevos: 09:00 - 19:30 (Lunes a Viernes)
+  // Pacientes Ortodoncia / Regular: 09:00 - 12:00 & 15:00 - 20:00 (Lunes a Jueves)
   const availableSlots = useMemo(() => {
     if (!selectedDate) return [];
     
@@ -123,54 +130,100 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
     const [year, month, day] = selectedDate.split('-').map(Number);
     const dateOfSlots = new Date(year, month - 1, day);
 
-    // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 20:00 (Mon-Thu)
-    const shifts = [{ start: 9, end: 12 }, { start: 15, end: 20 }];
+    if (tipoPaciente === 'Nuevo') {
+      // Continuous shift for new patients: 09:00 (540 min) to 19:30 (1170 min)
+      const startMins = 9 * 60; // 540
+      const endMins = 19 * 60 + 30; // 1170
 
-    shifts.forEach(shift => {
-      for (let h = shift.start; h < shift.end; h++) {
-        [0, 15, 30, 45].forEach(m => {
-          const slotStartMinutes = h * 60 + m;
-          const slotEndMinutes = slotStartMinutes + duracionMinutos;
+      for (let slotStartMinutes = startMins; slotStartMinutes < endMins; slotStartMinutes += 15) {
+        const slotEndMinutes = slotStartMinutes + duracionMinutos;
 
-          // Slot must end by shift end limit (12:00 or 20:00)
-          const shiftEndMinutes = shift.end * 60;
-          if (slotEndMinutes > shiftEndMinutes) return;
+        // Slot must end by shift limit (19:30 = 1170)
+        if (slotEndMinutes > endMins) continue;
 
-          const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
-          const endH = Math.floor(slotEndMinutes / 60);
-          const endM = slotEndMinutes % 60;
-          const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
+        const h = Math.floor(slotStartMinutes / 60);
+        const m = slotStartMinutes % 60;
+        const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
 
-          // Check if slot overlaps with any occupied range
-          const isOccupied = horasOcupadas.some(occ => {
-            const occStartParts = (occ.inicio || '').split(':').map(Number);
-            const occEndParts = (occ.fin || '').split(':').map(Number);
-            
-            const occStartMins = occStartParts[0] * 60 + occStartParts[1];
-            const occEndMins = occEndParts[0] * 60 + occEndParts[1];
+        const endH = Math.floor(slotEndMinutes / 60);
+        const endM = slotEndMinutes % 60;
+        const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
 
-            return slotStartMinutes < occEndMins && slotEndMinutes > occStartMins;
-          });
+        // Check if slot overlaps with any occupied range
+        const isOccupied = horasOcupadas.some(occ => {
+          const occStartParts = (occ.inicio || '').split(':').map(Number);
+          const occEndParts = (occ.fin || '').split(':').map(Number);
+          
+          const occStartMins = occStartParts[0] * 60 + occStartParts[1];
+          const occEndMins = occEndParts[0] * 60 + occEndParts[1];
 
-          // Filter out past times if date is today
-          const now = new Date();
-          const isToday = dateOfSlots.toDateString() === now.toDateString();
-          const currentMins = now.getHours() * 60 + now.getMinutes();
-          const isPast = isToday && slotStartMinutes <= currentMins;
-
-          if (!isOccupied && !isPast) {
-            slots.push({
-              time: timeStr,
-              display: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
-              endTime: endTimeStr
-            });
-          }
+          return slotStartMinutes < occEndMins && slotEndMinutes > occStartMins;
         });
+
+        // Filter out past times if date is today
+        const now = new Date();
+        const isToday = dateOfSlots.toDateString() === now.toDateString();
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+        const isPast = isToday && slotStartMinutes <= currentMins;
+
+        if (!isOccupied && !isPast) {
+          slots.push({
+            time: timeStr,
+            display: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+            endTime: endTimeStr
+          });
+        }
       }
-    });
+    } else {
+      // Morning shift: 09:00 - 12:00 | Afternoon shift: 15:00 - 20:00 (Mon-Thu)
+      const shifts = [{ start: 9, end: 12 }, { start: 15, end: 20 }];
+
+      shifts.forEach(shift => {
+        for (let h = shift.start; h < shift.end; h++) {
+          [0, 15, 30, 45].forEach(m => {
+            const slotStartMinutes = h * 60 + m;
+            const slotEndMinutes = slotStartMinutes + duracionMinutos;
+
+            // Slot must end by shift end limit (12:00 or 20:00)
+            const shiftEndMinutes = shift.end * 60;
+            if (slotEndMinutes > shiftEndMinutes) return;
+
+            const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+            const endH = Math.floor(slotEndMinutes / 60);
+            const endM = slotEndMinutes % 60;
+            const endTimeStr = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`;
+
+            // Check if slot overlaps with any occupied range
+            const isOccupied = horasOcupadas.some(occ => {
+              const occStartParts = (occ.inicio || '').split(':').map(Number);
+              const occEndParts = (occ.fin || '').split(':').map(Number);
+              
+              const occStartMins = occStartParts[0] * 60 + occStartParts[1];
+              const occEndMins = occEndParts[0] * 60 + occEndParts[1];
+
+              return slotStartMinutes < occEndMins && slotEndMinutes > occStartMins;
+            });
+
+            // Filter out past times if date is today
+            const now = new Date();
+            const isToday = dateOfSlots.toDateString() === now.toDateString();
+            const currentMins = now.getHours() * 60 + now.getMinutes();
+            const isPast = isToday && slotStartMinutes <= currentMins;
+
+            if (!isOccupied && !isPast) {
+              slots.push({
+                time: timeStr,
+                display: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+                endTime: endTimeStr
+              });
+            }
+          });
+        }
+      });
+    }
 
     return slots;
-  }, [selectedDate, duracionMinutos, horasOcupadas]);
+  }, [selectedDate, duracionMinutos, horasOcupadas, tipoPaciente]);
 
   // Calendar Helper Functions
   const getDaysInMonth = (date) => {
@@ -277,17 +330,19 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
             <button
               onClick={() => setTipoPaciente('Nuevo')}
               className="btn-primary"
-              style={{ width: '100%', height: '52px', fontSize: '1rem' }}
+              style={{ width: '100%', minHeight: '56px', fontSize: '0.95rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', padding: '0.6rem 1rem' }}
             >
-              Paciente Nuevo (Consulta General / Estética / Tratamientos)
+              <span style={{ fontWeight: 700 }}>Paciente Nuevo (Consulta / Tratamientos)</span>
+              <span style={{ fontSize: '0.78rem', opacity: 0.95, fontWeight: 400 }}>Horario: Lunes a Viernes de 09:00 a 19:30</span>
             </button>
 
             <button
               onClick={() => setTipoPaciente('Ortodoncia')}
               className="btn-secondary"
-              style={{ width: '100%', height: '52px', fontSize: '1rem', border: '1px solid var(--mint-leaf)' }}
+              style={{ width: '100%', minHeight: '56px', fontSize: '0.95rem', border: '1px solid var(--mint-leaf)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px', padding: '0.6rem 1rem' }}
             >
-              Paciente de Ortodoncia (Control / Diagnóstico)
+              <span style={{ fontWeight: 700 }}>Paciente de Ortodoncia (Control / Diagnóstico)</span>
+              <span style={{ fontSize: '0.78rem', opacity: 0.9, fontWeight: 400 }}>Horario: Lunes a Jueves (09:00-12:00 / 15:00-20:00)</span>
             </button>
           </div>
         </div>
@@ -307,9 +362,21 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
         <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--frosted-mint)', marginBottom: '0.2rem' }}>
           {tipoPaciente === 'Nuevo' ? 'Agendar Cita - Paciente Nuevo' : 'Agendar Cita - Paciente Ortodoncia'}
         </h2>
-        <p style={{ fontSize: '0.85rem', color: 'var(--celadon)', marginBottom: '1.25rem' }}>
+        <p style={{ fontSize: '0.85rem', color: 'var(--celadon)', marginBottom: '1rem' }}>
           Completa la sucursal, tratamiento y fecha deseada
         </p>
+
+        {tipoPaciente === 'Nuevo' ? (
+          <div style={{ background: 'rgba(52, 211, 153, 0.12)', border: '1px solid var(--sea-green)', borderRadius: 'var(--radius-md)', padding: '0.55rem 0.85rem', fontSize: '0.82rem', color: 'var(--frosted-mint)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <Clock size={16} color="var(--mint-leaf)" style={{ flexShrink: 0 }} />
+            <span><strong>Horario Pacientes Nuevos:</strong> Atención de Lunes a Viernes de 09:00 a 19:30</span>
+          </div>
+        ) : (
+          <div style={{ background: 'rgba(52, 211, 153, 0.08)', border: '1px solid rgba(52, 211, 153, 0.3)', borderRadius: 'var(--radius-md)', padding: '0.55rem 0.85rem', fontSize: '0.82rem', color: 'var(--celadon)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <Clock size={16} color="var(--mint-leaf)" style={{ flexShrink: 0 }} />
+            <span><strong>Horario Ortodoncia:</strong> Lunes a Jueves (09:00 - 12:00 / 15:00 - 20:00)</span>
+          </div>
+        )}
 
         {errorMessage && (
           <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#ff9999', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: '1rem' }}>
