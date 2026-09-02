@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar as CalendarIcon, LogOut, Plus, ShieldAlert, Stethoscope, CheckCircle, Trash2, ChevronLeft, ChevronRight, X, Clock, User, MapPin } from 'lucide-react';
+import { Calendar as CalendarIcon, LogOut, Plus, ShieldAlert, Stethoscope, CheckCircle, Trash2, ChevronLeft, ChevronRight, X, User } from 'lucide-react';
 import { api } from '../services/supabase';
 
 export default function AdminDashboard({ user, onLogout }) {
@@ -46,6 +46,14 @@ export default function AdminDashboard({ user, onLogout }) {
     loadData();
   }, []);
 
+  // Helper to identify blocked day sessions
+  const isBloqueo = (s) => {
+    const est = (s.estado || '').toLowerCase();
+    const notas = (s.notas || '').toLowerCase();
+    const nom = (s.nombre_paciente || '').toLowerCase();
+    return est === 'bloqueado' || notas.startsWith('[bloqueo]') || nom.includes('bloque');
+  };
+
   // Filter appointments for selected date
   const citasDelDia = useMemo(() => {
     return sesiones
@@ -53,9 +61,15 @@ export default function AdminDashboard({ user, onLogout }) {
       .sort((a, b) => (a.hora_inicio || '').localeCompare(b.hora_inicio || ''));
   }, [sesiones, selectedDate]);
 
-  // Separate active vs completed/canceled appointments
+  // Blocked sessions on selected date
+  const bloqueosDelDia = useMemo(() => {
+    return citasDelDia.filter(s => isBloqueo(s) && (s.estado || '').toLowerCase() !== 'cancelada');
+  }, [citasDelDia]);
+
+  // Separate active vs completed/canceled appointments (excluding blocks)
   const citasActivasDelDia = useMemo(() => {
     return citasDelDia.filter(s => {
+      if (isBloqueo(s)) return false;
       const est = (s.estado || '').toLowerCase();
       return est !== 'completada' && est !== 'cancelada';
     });
@@ -63,6 +77,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
   const citasTerminadasDelDia = useMemo(() => {
     return citasDelDia.filter(s => {
+      if (isBloqueo(s)) return false;
       const est = (s.estado || '').toLowerCase();
       return est === 'completada' || est === 'cancelada';
     });
@@ -70,10 +85,11 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // Resumen del día statistics
   const stats = useMemo(() => {
-    const total = citasDelDia.length;
-    const completadas = citasDelDia.filter(s => (s.estado || '').toLowerCase() === 'completada').length;
-    const pendientes = citasDelDia.filter(s => (s.estado || '').toLowerCase() === 'pendiente' || (s.estado || '').toLowerCase() === 'confirmada').length;
-    const cirugias = citasDelDia.filter(s => s.id_categoria === 5 || (s.notas || '').toLowerCase().includes('cirug')).length;
+    const regularCitas = citasDelDia.filter(s => !isBloqueo(s));
+    const total = regularCitas.length;
+    const completadas = regularCitas.filter(s => (s.estado || '').toLowerCase() === 'completada').length;
+    const pendientes = regularCitas.filter(s => (s.estado || '').toLowerCase() === 'pendiente' || (s.estado || '').toLowerCase() === 'confirmada').length;
+    const cirugias = regularCitas.filter(s => s.id_categoria === 5 || (s.notas || '').toLowerCase().includes('cirug')).length;
     return { total, completadas, pendientes, cirugias };
   }, [citasDelDia]);
 
@@ -82,7 +98,7 @@ export default function AdminDashboard({ user, onLogout }) {
       await api.actualizarEstadoSesion(idSesion, 'Completada');
       loadData();
     } catch (err) {
-      alert('Error al marcar como completada');
+      alert('Error al marcar como completada: ' + err.message);
     }
   };
 
@@ -92,7 +108,17 @@ export default function AdminDashboard({ user, onLogout }) {
       await api.eliminarSesion(idSesion);
       loadData();
     } catch (err) {
-      alert('Error al cancelar la cita');
+      alert('Error al cancelar la cita: ' + err.message);
+    }
+  };
+
+  const handleDesbloquear = async (idSesion) => {
+    if (!window.confirm('¿Deseas desbloquear este día y habilitar nuevamente los horarios de atención?')) return;
+    try {
+      await api.desbloquearDia(idSesion);
+      loadData();
+    } catch (err) {
+      alert('Error al desbloquear el día: ' + err.message);
     }
   };
 
@@ -199,6 +225,7 @@ export default function AdminDashboard({ user, onLogout }) {
                 const dStr = String(dayNum).padStart(2, '0');
                 const fullStr = `${y}-${m}-${dStr}`;
                 const isSelected = selectedDate === fullStr;
+                const isBlocked = sesiones.some(s => s.fecha === fullStr && isBloqueo(s) && (s.estado || '').toLowerCase() !== 'cancelada');
 
                 return (
                   <div
@@ -208,8 +235,24 @@ export default function AdminDashboard({ user, onLogout }) {
                       setSelectedDate(fullStr);
                       setShowCalendarToggle(false);
                     }}
+                    style={{ position: 'relative' }}
+                    title={isBlocked ? `Día con Bloqueo: ${fullStr}` : undefined}
                   >
                     {dayNum}
+                    {isBlocked && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          bottom: '3px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: '5px',
+                          height: '5px',
+                          borderRadius: '50%',
+                          backgroundColor: '#ef4444'
+                        }}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -236,6 +279,73 @@ export default function AdminDashboard({ user, onLogout }) {
             <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--mint-light)' }}>{stats.cirugias}</div>
           </div>
         </div>
+
+        {/* Banner de Días Bloqueados si existen para la fecha seleccionada */}
+        {bloqueosDelDia.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            {bloqueosDelDia.map(bloqueo => (
+              <div
+                key={bloqueo.id_sesion}
+                className="glass-card"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  borderColor: 'rgba(239, 68, 68, 0.45)',
+                  padding: '1rem 1.25rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '50%',
+                    background: 'rgba(239, 68, 68, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <ShieldAlert size={20} color="#f87171" />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{
+                        background: '#ef4444',
+                        color: '#fff',
+                        fontSize: '0.7rem',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        letterSpacing: '0.5px'
+                      }}>
+                        DÍA BLOQUEADO
+                      </span>
+                      <span style={{ fontSize: '0.9rem', color: 'var(--frosted-mint)', fontWeight: 700 }}>
+                        {getSucursalNombre(bloqueo.id_sucursal)}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--celadon)', marginTop: '0.25rem' }}>
+                      <strong>Motivo:</strong> {bloqueo.notas ? bloqueo.notas.replace(/^\[BLOQUEO\]\s*/i, '') : 'Sin motivo especificado'}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleDesbloquear(bloqueo.id_sesion)}
+                  className="btn-danger"
+                  style={{ padding: '0.45rem 0.9rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Trash2 size={15} />
+                  <span>Desbloquear Día</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Tabs for Active vs Finished Appointments */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
@@ -400,10 +510,11 @@ export default function AdminDashboard({ user, onLogout }) {
       {showBloquearModal && (
         <AdminBloquearModal
           selectedDate={selectedDate}
+          sucursales={sucursales}
           onDismiss={() => setShowBloquearModal(false)}
-          onSuccess={(motivo) => {
-            alert(`Día ${selectedDate} bloqueado correctamente. Motivo: ${motivo}`);
+          onSuccess={() => {
             setShowBloquearModal(false);
+            loadData();
           }}
         />
       )}
@@ -909,17 +1020,57 @@ function AdminCirugiaModal({ selectedDate, sucursales, clientes, sesiones, onDis
 }
 
 // Sub-component: Admin Bloquear Día Modal
-function AdminBloquearModal({ selectedDate, onDismiss, onSuccess }) {
+function AdminBloquearModal({ selectedDate, sucursales = [], onDismiss, onSuccess }) {
+  const [fecha, setFecha] = useState(selectedDate);
+  const [sucursalId, setSucursalId] = useState('all');
   const [motivo, setMotivo] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleConfirm = () => {
-    if (!motivo.trim()) return;
-    onSuccess(motivo);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!motivo.trim()) {
+      setErrorMessage('Por favor especifica el motivo del bloqueo.');
+      return;
+    }
+    if (!fecha) {
+      setErrorMessage('Por favor selecciona una fecha.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      if (sucursalId === 'all') {
+        // Bloquear en todas las sucursales
+        await Promise.all(
+          sucursales.map(s => api.bloquearDia({
+            fecha,
+            id_sucursal: s.id_sucursal,
+            motivo: motivo.trim()
+          }))
+        );
+      } else {
+        // Bloquear en sucursal específica
+        await api.bloquearDia({
+          fecha,
+          id_sucursal: Number(sucursalId),
+          motivo: motivo.trim()
+        });
+      }
+
+      onSuccess();
+    } catch (err) {
+      setErrorMessage('Error al bloquear día: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content">
+      <div className="modal-content" style={{ maxWidth: '480px' }}>
         <button onClick={onDismiss} style={{ position: 'absolute', top: '1.2rem', right: '1.2rem', background: 'none', border: 'none', color: 'var(--celadon)', cursor: 'pointer' }}>
           <X size={22} />
         </button>
@@ -928,37 +1079,78 @@ function AdminBloquearModal({ selectedDate, onDismiss, onSuccess }) {
           Bloquear Día Completo
         </h2>
         <p style={{ fontSize: '0.85rem', color: 'var(--celadon)', marginBottom: '1.2rem' }}>
-          Fecha a bloquear: {selectedDate}
+          Inhabilita los horarios de atención para evitar nuevas citas de pacientes.
         </p>
 
+        {errorMessage && (
+          <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#ff9999', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+            {errorMessage}
+          </div>
+        )}
+
         <div style={{ background: 'var(--warning-bg)', border: '1px solid var(--warning)', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', color: '#ffb74d', marginBottom: '1rem' }}>
-          ⚠️ Esto inhabilitará todos los horarios disponibles para los pacientes en la fecha seleccionada.
+          ⚠️ Esto inhabilitará todos los horarios disponibles para los pacientes en la fecha y sucursales seleccionadas.
         </div>
 
-        <div className="input-group">
-          <label className="input-label">Motivo del bloqueo *</label>
-          <textarea
-            className="input-field"
-            style={{ paddingLeft: '1rem', minHeight: '80px' }}
-            placeholder="ej. Mantenimiento de equipos / Feriado médico"
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-          />
-        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Fecha */}
+          <div className="input-group" style={{ marginBottom: 0 }}>
+            <label className="input-label">Fecha a Bloquear *</label>
+            <input
+              type="date"
+              className="input-field"
+              style={{ paddingLeft: '1rem' }}
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              required
+            />
+          </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-          <button type="button" onClick={onDismiss} className="btn-outlined" style={{ flex: 1 }}>Cancelar</button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            className="btn-danger"
-            disabled={!motivo.trim()}
-            style={{ flex: 1, justifyContent: 'center' }}
-          >
-            Bloquear Día
-          </button>
-        </div>
+          {/* Sucursal */}
+          <div className="input-group" style={{ marginBottom: 0 }}>
+            <label className="input-label">Sucursal a Bloquear *</label>
+            <select
+              className="input-field"
+              style={{ paddingLeft: '1rem' }}
+              value={sucursalId}
+              onChange={(e) => setSucursalId(e.target.value)}
+            >
+              <option value="all">🏢 Todas las sucursales</option>
+              {sucursales.map(s => (
+                <option key={s.id_sucursal} value={s.id_sucursal}>
+                  {s.direccion}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Motivo */}
+          <div className="input-group" style={{ marginBottom: 0 }}>
+            <label className="input-label">Motivo del bloqueo *</label>
+            <textarea
+              className="input-field"
+              style={{ paddingLeft: '1rem', minHeight: '80px' }}
+              placeholder="ej. Mantenimiento de equipos / Feriado médico / Capacitación"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              required
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+            <button type="button" onClick={onDismiss} className="btn-outlined" style={{ flex: 1 }}>Cancelar</button>
+            <button
+              type="submit"
+              className="btn-danger"
+              disabled={isSubmitting || !motivo.trim()}
+              style={{ flex: 1, justifyContent: 'center' }}
+            >
+              {isSubmitting ? 'Bloqueando...' : 'Confirmar Bloqueo'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
+

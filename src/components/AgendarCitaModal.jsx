@@ -12,10 +12,20 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
   const [selectedDate, setSelectedDate] = useState(null); // 'YYYY-MM-DD'
   const [selectedTime, setSelectedTime] = useState(null); // 'HH:mm:ss'
   const [horasOcupadas, setHorasOcupadas] = useState([]);
+  const [bloqueos, setBloqueos] = useState([]);
+  const [isDiaBloqueado, setIsDiaBloqueado] = useState(false);
+  const [motivoBloqueo, setMotivoBloqueo] = useState('');
 
   const [isLoadingHoras, setIsLoadingHoras] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Load all blocked days on mount
+  useEffect(() => {
+    api.getBloqueos()
+      .then(data => setBloqueos(data || []))
+      .catch(err => console.error('Error al cargar bloqueos:', err));
+  }, []);
 
   // Duration check
   const isOrtodoncia = tipoPaciente === 'Ortodoncia' || selectedCategoria?.nombre?.toLowerCase().includes('ortodoncia');
@@ -28,17 +38,38 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
   useEffect(() => {
     if (selectedDate && selectedSucursal) {
       setIsLoadingHoras(true);
+      setIsDiaBloqueado(false);
+      setMotivoBloqueo('');
       api.getSesionesPorFechaYSucursal(selectedDate, selectedSucursal.id_sucursal)
         .then(sesiones => {
-          setHorasOcupadas(sesiones.map(s => ({
-            inicio: s.hora_inicio,
-            fin: s.hora_fin
-          })));
+          const activeSesiones = (sesiones || []).filter(s => (s.estado || '').toLowerCase() !== 'cancelada');
+          
+          // Check if date is blocked
+          const bloqueo = activeSesiones.find(s =>
+            (s.estado || '').toLowerCase() === 'bloqueado' ||
+            (s.notas || '').toLowerCase().startsWith('[bloqueo]') ||
+            (s.nombre_paciente || '').toLowerCase().includes('bloque')
+          );
+
+          if (bloqueo) {
+            setIsDiaBloqueado(true);
+            setMotivoBloqueo(bloqueo.notas ? bloqueo.notas.replace(/^\[BLOQUEO\]\s*/i, '') : 'Día cerrado por la clínica');
+            setHorasOcupadas([{ inicio: '00:00:00', fin: '23:59:59' }]);
+          } else {
+            setIsDiaBloqueado(false);
+            setMotivoBloqueo('');
+            setHorasOcupadas(activeSesiones.map(s => ({
+              inicio: s.hora_inicio,
+              fin: s.hora_fin
+            })));
+          }
         })
         .catch(err => console.error(err))
         .finally(() => setIsLoadingHoras(false));
     } else {
       setHorasOcupadas([]);
+      setIsDiaBloqueado(false);
+      setMotivoBloqueo('');
     }
   }, [selectedDate, selectedSucursal]);
 
@@ -52,6 +83,19 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
 
     // Cannot book past dates
     if (checkDate < today) return false;
+
+    // Check if day is blocked in Supabase
+    const y = checkDate.getFullYear();
+    const m = String(checkDate.getMonth() + 1).padStart(2, '0');
+    const d = String(checkDate.getDate()).padStart(2, '0');
+    const checkDateStr = `${y}-${m}-${d}`;
+
+    const isDateBlocked = bloqueos.some(b =>
+      b.fecha === checkDateStr &&
+      (!selectedSucursal || Number(b.id_sucursal) === Number(selectedSucursal.id_sucursal)) &&
+      (b.estado || '').toLowerCase() !== 'cancelada'
+    );
+    if (isDateBlocked) return false;
 
     const dayOfWeek = checkDate.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
 
@@ -536,6 +580,18 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
 
               {isLoadingHoras ? (
                 <div style={{ textAlign: 'center', color: 'var(--celadon)', padding: '1rem', fontSize: '0.85rem' }}>Cargando horarios...</div>
+              ) : isDiaBloqueado ? (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.45)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '0.9rem',
+                  color: '#fca5a5',
+                  fontSize: '0.85rem',
+                  lineHeight: '1.4'
+                }}>
+                  🔒 <strong>Día no disponible para atención:</strong> Esta fecha ha sido bloqueada por la clínica ({motivoBloqueo}). Por favor selecciona otra fecha u otra sucursal.
+                </div>
               ) : availableSlots.length === 0 ? (
                 <div style={{ color: 'var(--danger)', fontSize: '0.85rem', padding: '0.5rem 0' }}>
                   No hay horarios libres disponibles para esta fecha.

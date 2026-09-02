@@ -1,5 +1,9 @@
-const BASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://qpxgoltvnwaenqwwhilb.supabase.co/rest/v1/";
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_sk3GOk3RA1-JIq1BZ762kA_sGRoKb4K";
+import { mockApi } from './mockApi';
+
+const USE_MOCK = import.meta.env?.VITE_USE_MOCK === 'true';
+
+const BASE_URL = import.meta.env?.VITE_SUPABASE_URL || "https://qpxgoltvnwaenqwwhilb.supabase.co/rest/v1/";
+const SUPABASE_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || "sb_publishable_sk3GOk3RA1-JIq1BZ762kA_sGRoKb4K";
 
 const headers = {
   "apikey": SUPABASE_KEY,
@@ -7,7 +11,8 @@ const headers = {
   "Content-Type": "application/json"
 };
 
-export const api = {
+const realApi = {
+
   // SUCURSALES
   async getSucursales() {
     try {
@@ -233,6 +238,52 @@ export const api = {
     }
   },
 
+  // BLOQUEAR DÍA (ADMIN)
+  async bloquearDia({ fecha, id_sucursal, motivo }) {
+    try {
+      const res = await fetch(`${BASE_URL}sesion`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id_sucursal: id_sucursal,
+          id_cliente: null,
+          id_categoria: 2,
+          fecha: fecha,
+          hora_inicio: "08:00:00",
+          hora_fin: "20:00:00",
+          notas: motivo ? `[BLOQUEO] ${motivo}` : "[BLOQUEO] Día bloqueado",
+          estado: "Bloqueado",
+          nombre_paciente: motivo ? `BLOQUEO: ${motivo}` : "DÍA BLOQUEADO"
+        })
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Error al bloquear día");
+      }
+      return true;
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  },
+
+  // DESBLOQUEAR DÍA
+  async desbloquearDia(idSesion) {
+    return this.eliminarSesion(idSesion);
+  },
+
+  // GET BLOQUEOS
+  async getBloqueos() {
+    try {
+      const res = await fetch(`${BASE_URL}sesion?estado=eq.Bloqueado&select=*`, { headers });
+      if (!res.ok) throw new Error("Error al obtener días bloqueados");
+      return await res.json();
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
+  },
+
   // ACTUALIZAR SESION (ESTADO)
   async actualizarEstadoSesion(idSesion, nuevoEstado) {
     try {
@@ -264,3 +315,7 @@ export const api = {
     }
   }
 };
+
+export const api = USE_MOCK ? mockApi : realApi;
+
+
