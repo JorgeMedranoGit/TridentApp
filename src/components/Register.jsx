@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, CreditCard, Calendar, Phone, Mail, Lock, Eye, EyeOff, HelpCircle, CheckCircle, ShieldCheck } from 'lucide-react';
+import { User, CreditCard, Calendar, Phone, Mail, Lock, Eye, EyeOff, HelpCircle, ShieldCheck } from 'lucide-react';
 import { api } from '../services/supabase';
 
 export default function Register({ onSuccess, onIniciarSesion }) {
@@ -15,9 +15,9 @@ export default function Register({ onSuccess, onIniciarSesion }) {
 
   const [showPassword, setShowPassword] = useState(false);
   const [terminosAceptados, setTerminosAceptados] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
-  const [showRememberModal, setShowRememberModal] = useState(false);
 
   // Field help toggles
   const [ayuda, setAyuda] = useState({});
@@ -70,7 +70,7 @@ export default function Register({ onSuccess, onIniciarSesion }) {
     return Object.keys(errs).length === 0;
   };
 
-  const handlePreSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setGeneralError('');
     if (!terminosAceptados) {
@@ -78,29 +78,27 @@ export default function Register({ onSuccess, onIniciarSesion }) {
       return;
     }
 
-    if (validar()) {
-      setShowRememberModal(true);
+    if (!validar()) {
+      return;
     }
-  };
 
-  const handleFinalRegister = async (rememberMe) => {
-    setShowRememberModal(false);
     setIsLoading(true);
-    setGeneralError('');
 
     try {
+      // Guardar cliente en la base de datos (independientemente de si se recuerda sesión o no)
       await api.guardarCliente(form);
 
-      // Automatic login
-      const loginIdentifier = form.email.trim() ? form.email.trim() : form.ci.trim();
+      // Iniciar sesión automáticamente
+      const loginIdentifier = form.email?.trim() ? form.email.trim() : form.ci.trim();
       try {
         const loginRes = await api.login(loginIdentifier, form.password);
-        const rol = loginRes?.rol || 'paciente';
+        const resData = Array.isArray(loginRes) ? loginRes[0] : loginRes;
+        const rol = resData?.rol || resData?.role || 'paciente';
         
         const sessionData = {
           isLoggedIn: true,
           rol: rol,
-          userId: loginRes?.id || loginRes?.id_usuario,
+          userId: resData?.id || resData?.id_usuario || resData?.id_cliente,
           identifier: loginIdentifier,
           rememberMe: rememberMe
         };
@@ -175,7 +173,7 @@ export default function Register({ onSuccess, onIniciarSesion }) {
 
         {/* Main Form */}
         <div className="glass-panel" style={{ padding: '1.75rem' }}>
-          <form onSubmit={handlePreSubmit}>
+          <form onSubmit={handleSubmit}>
             
             {/* Nombre */}
             <div className="input-group">
@@ -336,8 +334,19 @@ export default function Register({ onSuccess, onIniciarSesion }) {
               {ayuda.password && <div className="input-help-box">💡 Clave para iniciar sesión y mantener seguros tus tratamientos.</div>}
             </div>
 
+            {/* Remember me checkbox */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.2rem', marginBottom: '0.8rem', cursor: 'pointer' }} onClick={() => setRememberMe(!rememberMe)}>
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                style={{ accentColor: 'var(--mint-leaf)', width: '17px', height: '17px', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '0.85rem', color: 'var(--frosted-mint)' }}>Recuérdame en este dispositivo</span>
+            </div>
+
             {/* Terms and conditions */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '1.2rem 0', cursor: 'pointer' }} onClick={() => setTerminosAceptados(!terminosAceptados)}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.2rem', cursor: 'pointer' }} onClick={() => setTerminosAceptados(!terminosAceptados)}>
               <input
                 type="checkbox"
                 checked={terminosAceptados}
@@ -439,28 +448,7 @@ export default function Register({ onSuccess, onIniciarSesion }) {
         </div>
       )}
 
-      {/* Remember Me Prompt Modal */}
-      {showRememberModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ textAlign: 'center' }}>
-            <CheckCircle size={44} color="var(--mint-leaf)" style={{ margin: '0 auto 1rem' }} />
-            <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--frosted-mint)', marginBottom: '0.5rem' }}>
-              Recordar cuenta
-            </h3>
-            <p style={{ fontSize: '0.9rem', color: 'var(--celadon)', marginBottom: '1.5rem' }}>
-              ¿Deseas recordar tu cuenta en este navegador para no tener que iniciar sesión la próxima vez?
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button onClick={() => handleFinalRegister(false)} className="btn-outlined" style={{ flex: 1 }}>
-                No
-              </button>
-              <button onClick={() => handleFinalRegister(true)} className="btn-primary" style={{ flex: 1 }}>
-                Sí, recordar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

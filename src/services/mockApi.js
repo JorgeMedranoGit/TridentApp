@@ -125,7 +125,7 @@ export const mockApi = {
     const ident = (identifier || "").trim().toLowerCase();
     // Special admin login
     if (ident === "admin" && password === "admin123") {
-      return [{ id_cliente: 1, role: "admin", nombre: "Administrador", apellido: "General" }];
+      return [{ id: 1, id_cliente: 1, rol: "admin", role: "admin", nombre: "Administrador", apellido: "General" }];
     }
     const found = clientes.find(c => 
       (c.email?.toLowerCase() === ident || c.ci === ident) && c.password_hash === password
@@ -133,7 +133,7 @@ export const mockApi = {
     if (!found) {
       throw new Error("Credenciales inválidas");
     }
-    return [{ id_cliente: found.id_cliente, role: "patient", nombre: found.nombre, apellido: found.apellido }];
+    return [{ id: found.id_cliente, id_cliente: found.id_cliente, rol: "Cliente", role: "patient", nombre: found.nombre, apellido: found.apellido }];
   },
 
   async guardarCliente(data) {

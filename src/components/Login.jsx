@@ -45,14 +45,15 @@ export default function Login({ onLoginSuccess, onRegisterClick }) {
 
     try {
       const response = await api.login(identifier, password);
-      const rol = response?.rol;
+      const resData = Array.isArray(response) ? response[0] : response;
+      const rol = resData?.rol || resData?.role;
 
       if (rol && !rol.toLowerCase().includes('incorrectas') && !rol.toLowerCase().includes('false')) {
         // Save session
         const sessionData = {
           isLoggedIn: true,
           rol: rol,
-          userId: response.id || response.id_usuario,
+          userId: resData?.id || resData?.id_usuario || resData?.id_cliente,
           identifier: identifier,
           rememberMe: rememberMe
         };
