@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, HelpCircle, Plus, Calendar, MapPin, MessageCircle, AlertCircle, X, Trash2, CheckCircle2, Clock } from 'lucide-react';
+import { LogOut, HelpCircle, Plus, Calendar, MapPin, MessageCircle, Trash2, Clock, KeyRound } from 'lucide-react';
 import { api } from '../services/supabase';
 import AgendarCitaModal from './AgendarCitaModal';
+import CambiarPasswordModal from './CambiarPasswordModal';
 
 export default function UserDashboard({ user, onLogout }) {
   const [sesiones, setSesiones] = useState([]);
@@ -11,6 +12,7 @@ export default function UserDashboard({ user, onLogout }) {
 
   const [isLoading, setIsLoading] = useState(true);
   const [showAgendarModal, setShowAgendarModal] = useState(false);
+  const [showCambiarPassword, setShowCambiarPassword] = useState(false);
   
   // Interactive Tour Guide state
   const [showGuide, setShowGuide] = useState(false);
@@ -46,6 +48,11 @@ export default function UserDashboard({ user, onLogout }) {
   };
 
   useEffect(() => {
+    if (!user?.userId) {
+      alert('Tu sesión es inválida o ha expirado. Por favor inicia sesión nuevamente.');
+      onLogout();
+      return;
+    }
     loadData();
   }, [user]);
 
@@ -54,7 +61,7 @@ export default function UserDashboard({ user, onLogout }) {
     try {
       await api.actualizarEstadoSesion(idSesion, 'Cancelada');
       loadData();
-    } catch (err) {
+    } catch {
       alert('Error al cancelar la cita');
     }
   };
@@ -109,6 +116,13 @@ Tratamiento: `
           </div>
 
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => setShowCambiarPassword(true)}
+              className="btn-icon"
+              title="Cambiar contraseña"
+            >
+              <KeyRound size={20} />
+            </button>
             <button
               onClick={() => { setShowGuide(true); setGuideStep(1); }}
               className="btn-icon"
@@ -346,6 +360,14 @@ Tratamiento: `
             setShowAgendarModal(false);
             loadData();
           }}
+        />
+      )}
+
+      {/* Cambiar Contraseña Modal */}
+      {showCambiarPassword && (
+        <CambiarPasswordModal
+          initialCi={user?.identifier && /^\d+$/.test(user.identifier) ? user.identifier : ''}
+          onDismiss={() => setShowCambiarPassword(false)}
         />
       )}
 

@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { mockApi } from './mockApi';
 
 const USE_MOCK = import.meta.env?.VITE_USE_MOCK === 'true';
@@ -114,11 +115,78 @@ const realApi = {
           p_password_hash: data.password
         })
       });
+
+      const resText = await res.text();
       if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText);
+        throw new Error(resText || "Error en el servidor al registrar cuenta");
       }
+
+      // Supabase RPC devuelve errores como texto con HTTP 200 (ej. "Error: El número de teléfono ya está registrado.")
+      let parsed = resText;
+      try {
+        parsed = JSON.parse(resText);
+      } catch {
+        // Texto plano
+      }
+
+      if (typeof parsed === 'string' && /error|ya est[aá] registrado/i.test(parsed)) {
+        throw new Error(parsed);
+      }
+      if (parsed && typeof parsed === 'object' && parsed.error) {
+        throw new Error(parsed.error);
+      }
+
       return true;
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  },
+
+  // CAMBIAR CONTRASEÑA (CON CI Y FECHA DE NACIMIENTO)
+  async cambiarPassword({ ci, fechaNacimiento, newPassword }) {
+    try {
+      const cleanCi = String(ci || '').trim();
+      const cleanFecha = String(fechaNacimiento || '').trim();
+      if (!cleanCi || !cleanFecha || !newPassword) {
+        throw new Error("CI, fecha de nacimiento y nueva contraseña son obligatorios.");
+      }
+
+      // 1. Verificar si existe el cliente con el CI y fecha de nacimiento proporcionados
+      const res = await fetch(
+        `${BASE_URL}cliente?ci=eq.${encodeURIComponent(cleanCi)}&fecha_nacimiento=eq.${encodeURIComponent(cleanFecha)}&select=id_cliente,nombre,apellido,ci,fecha_nacimiento`,
+        { headers }
+      );
+      if (!res.ok) throw new Error("Error al validar los datos del paciente");
+      const clientesEncontrados = await res.json();
+
+      if (!clientesEncontrados || clientesEncontrados.length === 0) {
+        throw new Error("No se encontró ningún paciente con el CI y fecha de nacimiento indicados.");
+      }
+
+      const cliente = clientesEncontrados[0];
+
+      // 2. Generar hash bcrypt ($2a$06$) compatible con la base de datos PostgreSQL
+      const salt = bcrypt.genSaltSync(6);
+      const hash = bcrypt.hashSync(newPassword, salt).replace(/^\$2b\$/, '$2a$');
+
+      // 3. Actualizar password_hash en la tabla cliente
+      const patchRes = await fetch(`${BASE_URL}cliente?id_cliente=eq.${cliente.id_cliente}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ password_hash: hash })
+      });
+
+      if (!patchRes.ok) {
+        const errText = await patchRes.text();
+        throw new Error(errText || "Error al actualizar la contraseña");
+      }
+
+      return {
+        success: true,
+        nombre: cliente.nombre,
+        apellido: cliente.apellido
+      };
     } catch (e) {
       console.error(e);
       throw e;
@@ -164,6 +232,11 @@ const realApi = {
   // AGENDAR CITA (DIRECTO O RPC)
   async agendarCita(sesionData) {
     try {
+      const isBloqueo = sesionData.estado === 'Bloqueado' || (sesionData.notas || '').startsWith('[BLOQUEO]');
+      if (!isBloqueo && !sesionData.id_cliente && !sesionData.nombre_paciente) {
+        throw new Error("No se puede agendar una cita sin cliente identificado ni nombre de paciente.");
+      }
+
       const res = await fetch(`${BASE_URL}sesion`, {
         method: "POST",
         headers,

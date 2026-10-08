@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, HelpCircle, LogIn, UserPlus, Lightbulb } from 'lucide-react';
 import { api } from '../services/supabase';
+import CambiarPasswordModal from './CambiarPasswordModal';
 
 export default function Login({ onLoginSuccess, onRegisterClick }) {
   const [identifier, setIdentifier] = useState('');
@@ -8,6 +9,7 @@ export default function Login({ onLoginSuccess, onRegisterClick }) {
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showCambiarPassword, setShowCambiarPassword] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [identifierError, setIdentifierError] = useState('');
@@ -46,14 +48,15 @@ export default function Login({ onLoginSuccess, onRegisterClick }) {
     try {
       const response = await api.login(identifier, password);
       const resData = Array.isArray(response) ? response[0] : response;
-      const rol = resData?.rol || resData?.role;
+      const rol = String(resData?.rol ?? resData?.role ?? '');
+      const userId = resData?.id ?? resData?.id_usuario ?? resData?.id_cliente;
 
-      if (rol && !rol.toLowerCase().includes('incorrectas') && !rol.toLowerCase().includes('false')) {
+      if (userId && rol && !/false|incorrectas/i.test(rol)) {
         // Save session
         const sessionData = {
           isLoggedIn: true,
           rol: rol,
-          userId: resData?.id || resData?.id_usuario || resData?.id_cliente,
+          userId: userId,
           identifier: identifier,
           rememberMe: rememberMe
         };
@@ -68,7 +71,7 @@ export default function Login({ onLoginSuccess, onRegisterClick }) {
       } else {
         setGeneralError('Credenciales incorrectas. Revisa tu Correo/CI y contraseña.');
       }
-    } catch (err) {
+    } catch {
       setGeneralError('Error de conexión o credenciales inválidas.');
     } finally {
       setIsLoading(false);
@@ -195,6 +198,26 @@ export default function Login({ onLoginSuccess, onRegisterClick }) {
               {passwordError && <div className="input-error-msg">{passwordError}</div>}
             </div>
 
+            {/* Change / Reset Password Option */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-0.3rem', marginBottom: '0.9rem' }}>
+              <button
+                type="button"
+                onClick={() => setShowCambiarPassword(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--mint-leaf)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: 0,
+                  textDecoration: 'underline'
+                }}
+              >
+                ¿Olvidaste o quieres cambiar tu contraseña?
+              </button>
+            </div>
+
             {/* Remember me checkbox */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.2rem', cursor: 'pointer' }} onClick={() => setRememberMe(!rememberMe)}>
               <input
@@ -244,6 +267,14 @@ export default function Login({ onLoginSuccess, onRegisterClick }) {
           </button>
         </div>
       </div>
+
+      {/* Cambiar Contraseña Modal */}
+      {showCambiarPassword && (
+        <CambiarPasswordModal
+          initialCi={/^\d+$/.test(identifier.trim()) ? identifier.trim() : ''}
+          onDismiss={() => setShowCambiarPassword(false)}
+        />
+      )}
     </div>
   );
 }

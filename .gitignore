@@ -32,4 +32,9 @@ dist-ssr
 tests/
 tests
 
+# Incident reports / temp files
+Reporte_id_cliente_NULL.pdf
+*.pdf
+
+
 

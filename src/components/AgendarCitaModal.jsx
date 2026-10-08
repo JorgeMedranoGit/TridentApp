@@ -293,6 +293,11 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
   };
 
   const handleSubmit = async () => {
+    if (!user?.userId) {
+      setErrorMessage('No se puede agendar la cita: Sesión de paciente inválida. Por favor vuelve a iniciar sesión.');
+      return;
+    }
+
     if (!selectedDate || !selectedTime || !selectedSucursal) return;
 
     // Check active appointment restriction
@@ -419,6 +424,12 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
           <div style={{ background: 'rgba(52, 211, 153, 0.08)', border: '1px solid rgba(52, 211, 153, 0.3)', borderRadius: 'var(--radius-md)', padding: '0.55rem 0.85rem', fontSize: '0.82rem', color: 'var(--celadon)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
             <Clock size={16} color="var(--mint-leaf)" style={{ flexShrink: 0 }} />
             <span><strong>Horario Ortodoncia:</strong> Lunes a Jueves (09:00 - 12:00 / 15:00 - 20:00)</span>
+          </div>
+        )}
+
+        {!user?.userId && (
+          <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: '#ff9999', padding: '0.75rem', borderRadius: 'var(--radius-md)', fontSize: '0.82rem', marginBottom: '1rem' }}>
+            ⚠️ Tu sesión no cuenta con un identificador de paciente válido. Cierra sesión e inicia sesión de nuevo para poder agendar.
           </div>
         )}
 
@@ -621,7 +632,7 @@ export default function AgendarCitaModal({ user, sucursales, categorias, reglas,
           <button
             onClick={handleSubmit}
             className="btn-primary"
-            disabled={!selectedDate || !selectedTime || !selectedSucursal || isSubmitting}
+            disabled={!selectedDate || !selectedTime || !selectedSucursal || !user?.userId || isSubmitting}
             style={{ flex: 1 }}
           >
             {isSubmitting ? 'Confirmando...' : 'Confirmar Cita'}

@@ -93,12 +93,18 @@ export default function Register({ onSuccess, onIniciarSesion }) {
       try {
         const loginRes = await api.login(loginIdentifier, form.password);
         const resData = Array.isArray(loginRes) ? loginRes[0] : loginRes;
-        const rol = resData?.rol || resData?.role || 'paciente';
-        
+        const rol = String(resData?.rol ?? resData?.role ?? '');
+        const userId = resData?.id ?? resData?.id_usuario ?? resData?.id_cliente;
+
+        if (!userId || /false|incorrectas/i.test(rol)) {
+          setGeneralError('No se pudo iniciar sesión con tu cuenta creada. Por favor, revisa tus datos o inicia sesión.');
+          return;
+        }
+
         const sessionData = {
           isLoggedIn: true,
-          rol: rol,
-          userId: resData?.id || resData?.id_usuario || resData?.id_cliente,
+          rol: rol || 'paciente',
+          userId: userId,
           identifier: loginIdentifier,
           rememberMe: rememberMe
         };
@@ -110,12 +116,17 @@ export default function Register({ onSuccess, onIniciarSesion }) {
         }
 
         onSuccess(sessionData);
-      } catch (lErr) {
-        onIniciarSesion();
+      } catch {
+        setGeneralError('Tu cuenta fue creada pero no se pudo iniciar sesión automáticamente. Por favor inicia sesión con tu usuario y contraseña.');
       }
     } catch (err) {
-      if (err.message?.includes('23505') || err.message?.includes('already exists') || err.message?.includes('duplicate')) {
-        setGeneralError('Este usuario ya fue registrado previamente.');
+      const msg = err.message || '';
+      if (msg.includes('23505') || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('registrado')) {
+        const cleanMsg = msg.replace(/^"?Error:\s*/i, '').replace(/"$/, '').trim();
+        setGeneralError(cleanMsg || 'Este usuario ya fue registrado previamente (CI, teléfono o correo ya existen).');
+      } else if (msg) {
+        const cleanMsg = msg.replace(/^"?Error:\s*/i, '').replace(/"$/, '').trim();
+        setGeneralError(cleanMsg || 'Error al registrar la cuenta. Revisa tus datos.');
       } else {
         setGeneralError('Error al registrar la cuenta. Revisa tus datos.');
       }

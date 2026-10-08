@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar as CalendarIcon, LogOut, Plus, ShieldAlert, Stethoscope, CheckCircle, Trash2, ChevronLeft, ChevronRight, X, User } from 'lucide-react';
 import { api } from '../services/supabase';
 
-export default function AdminDashboard({ user, onLogout }) {
+export default function AdminDashboard({ user: _user, onLogout }) {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [showCalendarToggle, setShowCalendarToggle] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());

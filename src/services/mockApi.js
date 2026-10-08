@@ -151,6 +151,21 @@ export const mockApi = {
     return true;
   },
 
+  async cambiarPassword({ ci, fechaNacimiento, newPassword }) {
+    const cleanCi = String(ci || '').trim();
+    const cleanFecha = String(fechaNacimiento || '').trim();
+    const found = clientes.find(c => String(c.ci).trim() === cleanCi && c.fecha_nacimiento === cleanFecha);
+    if (!found) {
+      throw new Error("No se encontró ningún paciente con el CI y fecha de nacimiento proporcionados.");
+    }
+    found.password_hash = newPassword;
+    return {
+      success: true,
+      nombre: found.nombre,
+      apellido: found.apellido
+    };
+  },
+
   async getSesiones() {
     return JSON.parse(JSON.stringify(sesiones));
   },
@@ -166,6 +181,11 @@ export const mockApi = {
   },
 
   async agendarCita(sesionData) {
+    const isBloqueo = sesionData.estado === 'Bloqueado' || (sesionData.notas || '').startsWith('[BLOQUEO]');
+    if (!isBloqueo && !sesionData.id_cliente && !sesionData.nombre_paciente) {
+      throw new Error("No se puede agendar una cita sin id_cliente ni nombre de paciente.");
+    }
+
     const newSesion = {
       id_sesion: nextSesionId++,
       id_sucursal: Number(sesionData.id_sucursal),

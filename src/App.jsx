@@ -30,12 +30,22 @@ export default function App() {
     if (!hasSeenWalkthrough) {
       setCurrentView('onboarding');
     } else if (parsedSession && parsedSession.isLoggedIn) {
-      setUserSession(parsedSession);
-      const rol = (parsedSession.rol || '').toLowerCase();
-      if (rol.includes('admin')) {
-        setCurrentView('admin');
+      const rol = String(parsedSession.rol || '').toLowerCase();
+      const userId = parsedSession.userId;
+
+      // Si la sesión no tiene userId válido o el rol es inválido, limpiarla y redirigir a login
+      if (!userId || /false|incorrectas/.test(rol)) {
+        localStorage.removeItem('dental_clinic_session');
+        sessionStorage.removeItem('dental_clinic_session');
+        setUserSession(null);
+        setCurrentView('login');
       } else {
-        setCurrentView('user');
+        setUserSession(parsedSession);
+        if (rol.includes('admin')) {
+          setCurrentView('admin');
+        } else {
+          setCurrentView('user');
+        }
       }
     } else {
       setCurrentView('login');
